@@ -1,0 +1,11 @@
+pub mod anthropic;
+pub mod google_gemini_cli;
+pub mod github_copilot;
+pub mod google_antigravity;
+pub mod kimi_code;
+pub mod minimax_code;
+pub mod ollama;
+pub mod openai_codex;
+pub mod opencode_go;
+pub mod xai_oauth;
+pub mod zai;
