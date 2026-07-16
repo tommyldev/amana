@@ -1,147 +1,177 @@
 # atop
 
-Agent Token Observer & Monitor — a single-binary CLI that ingests usage data from
-local agent logs and admin APIs, stores it in a local SQLite database, and
-reports per-provider token / cost usage against your configured window and
-limits.
+Agent Token Observer & Monitor — a single-binary TypeScript/Bun CLI + TUI that
+ingests AI usage from local agent logs and admin APIs, fetches live quota with
+your own OAuth/API credentials, stores everything in a local SQLite database,
+and reports per-provider token/cost usage against your configured windows and
+limits — with threshold alerts and a modern tabbed dashboard.
 
 ## Features
 
-- **Local-first.** SQLite database lives under your XDG data directory; nothing
-  leaves the machine except outbound admin-API calls you opt into.
-- **Multi-source ingestion.** Two log-file sources (`omp`, `claude-code`) and
-  two admin-API sources (`openai-api`, `anthropic-api`) ship out of the box.
-- **Incremental sync.** Tracks byte offset + mtime per source file, so reruns
-  only parse new bytes.
-- **Usage windows.** Rolling (`5h`), `Daily`, `Weekly` (with `--weekday`), and
-  `Monthly` (with `--day`).
-- **Limits.** Per-provider token and/or monthly cost caps; a `--help`-style
-  status row surfaces them.
+- **Local-first.** SQLite lives under your XDG data dir; nothing leaves the
+  machine except the provider API calls you opt into.
+- **Multi-source ingestion.** Log-file sources (`omp`, `claude-code`) plus admin
+  APIs (`openai-api`, `anthropic-api`), incrementally tailed by byte offset +
+  mtime so reruns only parse new bytes.
+- **Live usage.** Fetches real quota/limits directly from 12 providers (Anthropic,
+  ChatGPT/Codex, Z.AI, MiniMax, Gemini, Copilot, and more).
+- **Multiple accounts per provider.** Log in to the same provider several times
+  (e.g. two Anthropic accounts); each distinct account is tracked separately.
+- **Threshold alerts.** Configurable thresholds (default 75/90/100%) fire a
+  desktop notification (`notify-send`/`osascript`) and an in-TUI banner when a
+  limit is crossed — deduped per window, re-armed after each reset.
+- **Token spend by hour.** Per-provider hourly token/cost charts in the TUI.
+- **Windows & limits.** Rolling (`5h`), daily, weekly (`--weekday`), monthly
+  (`--day`); per-provider token and/or monthly-cost caps.
 
 ## Requirements
 
-- Rust **1.75+** (edition 2021, `clap` 4.5 derive macros).
-- `pkg-config` + a C toolchain — `rusqlite` is `bundled`, so no system SQLite
-  is needed.
-- Linux, macOS, or Windows. Linux is the primary target (XDG paths).
+- **[Bun](https://bun.sh) ≥ 1.1** (provides `bun:sqlite`, `bun test`, and
+  single-binary `bun build --compile`). No other runtime needed.
+- Linux, macOS, or Windows. Linux is the primary target (XDG paths;
+  `notify-send` for desktop alerts).
 
 ## Install
 
 ```bash
 git clone <repo-url> atop
 cd atop
-cargo install --path .
+bun install
+bun run build          # produces a self-contained ./dist/atop binary
+./dist/atop report
 ```
 
-Or just run from a checkout:
+Or run straight from the checkout without compiling:
 
 ```bash
-cargo run -- report
+bun run start          # = bun src/index.ts   (launches the TUI)
+bun src/index.ts report
 ```
 
 ## Quick start
 
 ```bash
-# 1. See what's configured (and what your usage looks like today).
-cargo run -- report
+# 1. See today's usage (runs an incremental sync first).
+bun src/index.ts report
 
-# 2. Authenticate a provider (OAuth for live usage, or admin key for ingestion).
-cargo run -- login anthropic         # OAuth → live quota in the TUI
-cargo run -- login openai-api        # admin key → cost ingestion
+# 2. Authenticate providers.
+bun src/index.ts login anthropic        # OAuth (browser) → live quota; run twice for two accounts
+bun src/index.ts login openai-codex     # OAuth (ChatGPT/Codex)
+bun src/index.ts login minimax-code     # OAuth device flow
+bun src/index.ts login zai              # API key
+bun src/index.ts login openai-api       # admin key → cost ingestion
 
-# 3. Change a provider's active usage window.
-cargo run -- window set omp --type rolling --duration 5h
-cargo run -- window set claude-code --type daily
+# 3. Inspect / manage accounts.
+bun src/index.ts accounts list
+bun src/index.ts accounts remove anthropic --account you@example.com
 
-# 4. Set a token / cost cap.
-cargo run -- limit set openai-api --cost 50 --tokens 10_000_000
+# 4. Configure windows, limits, and alerts.
+bun src/index.ts window set omp --type rolling --duration 5h
+bun src/index.ts limit set anthropic --tokens 10000000 --cost 50
+bun src/index.ts alerts set --thresholds 75,90,100 --desktop true
+bun src/index.ts alerts test            # fire a test notification
 
-# 5. Launch the TUI (the default — no args).
-cargo run
+# 5. Launch the TUI (default — no args).
+bun src/index.ts
 ```
 
-`report` and `sync` both run an incremental sync first, so a fresh
-checkout with no DB will populate on the first invocation.
-
+`report` and `sync` both run an incremental sync first, so a fresh checkout
+with no DB populates on the first invocation.
 
 ## Commands
 
-| Command                                      | What it does                                                 |
-| -------------------------------------------- | ------------------------------------------------------------ |
-| `atop` (no args)                             | Launch the token-usage TUI dashboard (default).              |
-| `atop report`                                | Sync + print today's totals (text).                          |
-| `atop sync [--full]`                         | Run ingestion now. `--full` re-reads from byte 0.            |
-| `atop login <id>`                            | Authenticate a provider; admin-API ids (`openai-api`, `anthropic-api`) set the ingestion key. |
-| `atop window set <provider> --type <t> ...`  | Configure the usage window (see below).                      |
-| `atop limit set <provider> [--cost] [--tokens]` | Set a per-window token and/or monthly cost cap.            |
-| `Tab` (in TUI)                               | Switch between token-usage and live-capacity screens.       |
+| Command | What it does |
+| --- | --- |
+| `atop` (no args) | Launch the tabbed TUI dashboard (default). |
+| `atop report` | Sync + print today's totals and per-provider window status. |
+| `atop sync [--full]` | Run ingestion now. `--full` re-reads from byte 0. |
+| `atop usage [--json] [--provider <id>]` | Fetch live provider usage/quota. |
+| `atop login [<id>] [--api-key]` | Authenticate a provider (OAuth, device flow, or API/admin key). |
+| `atop accounts list` | List stored accounts (provider, label, kind, expiry). |
+| `atop accounts remove <id> [--account <label>]` | Remove one stored account. |
+| `atop window set <id> --type <t> …` | Configure the usage window (see below). |
+| `atop limit set <id> [--cost] [--tokens]` | Set a per-window token and/or monthly cost cap. |
+| `atop alerts set [--thresholds a,b,c] [--desktop true\|false] [--enabled true\|false]` | Configure alerts. |
+| `atop alerts test` | Fire a test desktop notification. |
 
-Window flags (mutually exclusive with `--type`):
+Window flags:
 
-| `--type`  | Required flags          | Meaning                                      |
-| --------- | ----------------------- | -------------------------------------------- |
-| `rolling` | `--duration 5h`         | Sliding window of the given duration.        |
-| `daily`   | (none)                  | Calendar day, resets at 00:00 UTC.           |
-| `weekly`  | `--weekday mon`         | Week anchored on the given weekday.          |
-| `monthly` | `--day 1`               | Month anchored on the given day-of-month.    |
+| `--type` | Required flag | Meaning |
+| --- | --- | --- |
+| `rolling` | `--duration 5h` | Sliding window of the given duration (epoch-grid floored). |
+| `daily` | (none) | Calendar day, resets 00:00 UTC. |
+| `weekly` | `--weekday mon` | Week anchored on the given weekday. |
+| `monthly` | `--day 1` | Month anchored on the given day-of-month. |
+
+## TUI
+
+Three top-level tabs — **Limits**, **Tokens**, **Accounts** — with drill-ins.
+
+| Key | Action |
+| --- | --- |
+| `1` / `2` / `3` | Jump to a tab · `Tab` cycles |
+| `↑`/`↓` or `k`/`j` | Move selection (wraps) |
+| `Enter` / `→` / `l` | Drill into the selected provider |
+| `Esc` / `←` / `Backspace` | Back (`Esc` at top level quits) |
+| `r` | Force refresh · `t` cycle token span 12→24→48h |
+| `x` | Dismiss alert banner · `?`/`h` help · `q`/`Ctrl-C` quit |
+
+The TUI refreshes on a timer (`ui.refresh_interval_seconds`, default 60) and on
+`r`: it syncs logs, fetches live usage, recomputes hourly spend, reloads
+accounts, and evaluates alert thresholds (firing the banner + desktop
+notification). Alerts fire only from this loop — there is no background daemon.
 
 ## Providers
 
-| Id             | Source                | Needs admin key | Default window |
-| -------------- | --------------------- | --------------- | -------------- |
-| `omp`          | `~/.omp/agent/sessions` (`*.jsonl`) | No  | Rolling 5h     |
-| `claude-code`  | `~/.claude/projects`  (`*.jsonl`)    | No  | Rolling 5h     |
-Two providers are enabled by default (`omp`, `claude-code`). The admin-API
-providers start disabled and are turned on by `atop login <id>`.
+Two log aggregates are enabled by default; everything else is opted in via
+`atop login`.
+
+| Id | Source / auth | Default window |
+| --- | --- | --- |
+| `omp` | `~/.omp/agent/sessions` (`*.jsonl`) | Rolling 5h |
+| `claude-code` | `~/.claude/projects` (`*.jsonl`) | Rolling 5h + weekly |
+| `anthropic` | OAuth (Claude Pro/Max) | Rolling 5h + weekly |
+| `openai-codex` | OAuth (ChatGPT/Codex) | Rolling 5h + weekly |
+| `minimax-code` / `-cn` | OAuth device flow | Rolling 5h + weekly |
+| `google-antigravity` / `google-gemini-cli` | OAuth | Daily |
+| `zai` | API key | Rolling 5h + weekly |
+| `github-copilot` | API key (+ optional enterprise URL) | Monthly |
+| `openai-api` / `anthropic-api` | Admin key → cost ingestion | Monthly |
+
+`atop usage --provider <id>` and the TUI Limits tab also cover `kimi-code`,
+`opencode-go`, `ollama`, and `xai-oauth` where usage endpoints exist.
+
+## Data & migration from the Rust build
+
+- **Config and history carry over.** Same paths, same `config.toml` format, same
+  SQLite schema — your existing `atop.db` and settings are reused as-is.
+- **Credentials do NOT carry over.** The Rust build stored them encrypted in the
+  OS keyring; this build uses a plain `credentials.json` (mode `0600`) in the
+  data dir, matching the Codex/Claude/MiniMax CLI convention. Re-run
+  `atop login <provider>` once.
 
 ## Environment variables
 
-| Variable                | Effect                                                           |
-| ----------------------- | ---------------------------------------------------------------- |
-| `ATOP_CONFIG_DIR`       | Override the XDG config dir; `config.toml` is read/written here. |
-| `ATOP_DATA_DIR`         | Override the XDG data dir; SQLite db lives here as `atop.db`.    |
-| `ATOP_OMP_DIR`          | Override the root for `omp` jsonl ingestion.                     |
-| `ATOP_CLAUDE_DIR`       | Override the root for `claude-code` jsonl ingestion.             |
+| Variable | Effect |
+| --- | --- |
+| `ATOP_CONFIG_DIR` | Override the config dir; `config.toml` is read/written here. |
+| `ATOP_DATA_DIR` | Override the data dir; holds `atop.db` and `credentials.json`. |
+| `ATOP_OMP_DIR` | Root for `omp` jsonl ingestion. |
+| `ATOP_CLAUDE_DIR` | Root for `claude-code` jsonl ingestion. |
 
-Defaults (Linux):
-
-- Config: `${XDG_CONFIG_HOME:-~/.config}/atop/config.toml`
-- Data:   `${XDG_DATA_HOME:-~/.local/share}/atop/atop.db`
-
-## Layout
-
-```text
-.
-├── Cargo.toml            # package + deps (all pinned to =x.y)
-├── src/
-│   ├── main.rs           # tokio entry: Cli::parse().run()
-│   ├── lib.rs            # module surface
-│   ├── cli/              # clap subcommands + handlers
-│   ├── config/           # Config, Paths, ProviderCfg, defaults
-│   ├── source/           # trait + per-provider fetchers
-│   │   ├── omp/          # log-file ingestion
-│   │   ├── claude_code/  # log-file ingestion
-│   │   ├── admin_openai.rs
-│   │   └── admin_anthropic.rs
-│   ├── db/               # rusqlite schema, insert, query
-│   ├── window/           # rolling / daily / weekly / monthly logic
-│   ├── report/           # stdout rendering
-│   ├── price.rs          # per-model token -> cost
-│   ├── secret.rs         # OS keyring via the `keyring` crate
-│   └── sync.rs           # fan-out runner
-└── README.md
-```
+Defaults (Linux): config `${XDG_CONFIG_HOME:-~/.config}/atop`, data
+`${XDG_DATA_HOME:-~/.local/share}/atop`.
 
 ## Development
 
 ```bash
-cargo build              # debug build
-cargo test               # full test suite (uses tempfile + ATOP_* env vars)
-cargo run -- report      # run against your real data dir
+bun test            # full suite (hermetic: each disk test uses a temp ATOP_* dir)
+bun run typecheck   # tsc --noEmit
+bun run build       # single-binary ./dist/atop
 ```
 
-Each test that touches disk sets `ATOP_CONFIG_DIR` / `ATOP_DATA_DIR` to a
-`tempfile::TempDir`, so they are hermetic and safe to run in parallel.
+Layout: `src/{config,db,window,ingest,auth,usage,alerts,report,cli,tui}` plus
+`registry.ts` and `price.ts`. Every module is kept under 200 lines.
 
 ## License
 
