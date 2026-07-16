@@ -15,6 +15,9 @@ import { collectJsonlFiles, resetCursor, tailFile } from "./scan.ts";
 interface OmpEntry {
   type?: string;
   id?: string;
+  /** omp writes the event time at the top level (RFC3339 or epoch-ms);
+   *  older/nested logs may carry it on `message` instead. */
+  timestamp?: number | string;
   message?: OmpMsg;
 }
 interface OmpMsg {
@@ -57,12 +60,13 @@ export function parseOmpLine(line: string): UsageEventRow | null {
   const cost = usage.cost?.total ?? null;
   const provider = msg.provider ?? "unknown";
   const model = msg.model ?? "unknown";
+  const rawTs = entry.timestamp ?? msg.timestamp;
   let ts = Date.now();
-  if (typeof msg.timestamp === "number") ts = msg.timestamp;
-  else if (typeof msg.timestamp === "string") {
-    if (/^-?\d+$/.test(msg.timestamp)) ts = Number(msg.timestamp);
+  if (typeof rawTs === "number") ts = rawTs;
+  else if (typeof rawTs === "string") {
+    if (/^-?\d+$/.test(rawTs)) ts = Number(rawTs);
     else {
-      const ms = Date.parse(msg.timestamp);
+      const ms = Date.parse(rawTs);
       if (Number.isFinite(ms)) ts = ms;
     }
   }

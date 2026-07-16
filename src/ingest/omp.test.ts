@@ -70,6 +70,15 @@ test("parseOmpLine: rfc3339 timestamp and cost.total", () => {
   expect(row.total_tokens).toBe(150);
 });
 
+test("parseOmpLine: prefers the top-level event timestamp over nested/now", () => {
+  const line =
+    `{"type":"message","id":"z","timestamp":"2026-07-16T14:36:47.240Z","message":{` +
+    `"role":"assistant","model":"MiniMax-M3","provider":"minimax-code",` +
+    `"usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"cost":{"total":0}}}}`;
+  const row = parseOmpLine(line)!;
+  expect(row.timestamp_ms).toBe(Date.parse("2026-07-16T14:36:47.240Z"));
+});
+
 test("ingestOmp: ingests one assistant message; second pass is a no-op", async () => {
   const file = join(ompRoot, "a.jsonl");
   writeFileSync(
