@@ -86,6 +86,7 @@ with no DB populates on the first invocation.
 | `atop report` | Sync + print today's totals and per-provider window status. |
 | `atop sync [--full]` | Run ingestion now. `--full` re-reads from byte 0. |
 | `atop usage [--json] [--provider <id>]` | Fetch live provider usage/quota. |
+| `atop graph [--span 24] [--provider <id>]` | Plot the hourly token-usage rate (tokens/hour) as a text bar chart + per-provider breakdown. |
 | `atop login [<id>] [--api-key]` | Authenticate a provider (OAuth, device flow, or API/admin key). |
 | `atop accounts list` | List stored accounts (provider, label, kind, expiry). |
 | `atop accounts remove <id> [--account <label>]` | Remove one stored account. |

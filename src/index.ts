@@ -15,6 +15,7 @@ const COMMANDS: Record<string, () => Promise<{ run: Handler }>> = {
   limit: () => import("./cli/limit.ts"),
   alerts: () => import("./cli/alerts.ts"),
   usage: () => import("./cli/usage.ts"),
+  graph: () => import("./cli/graph.ts"),
 };
 
 const USAGE = `atop — Agent Token Observer & Monitor
@@ -26,6 +27,7 @@ Commands:
   report      Print today's spend + per-provider window status
   sync        Run ingestion now (--full re-reads from byte 0)
   usage       Fetch live provider usage/quota
+  graph       Plot hourly token-usage rate (--span, --provider)
   login       Authenticate a provider (OAuth or API key)
   accounts    List or remove stored accounts
   window      Set the active usage window for a provider
