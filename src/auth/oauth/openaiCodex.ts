@@ -87,7 +87,10 @@ export async function refresh(cred: Credential): Promise<Credential> {
 
 function tokenToCred(t: TokenResponse, prev?: Extract<Credential, { type: "oauth" }>): Extract<Credential, { type: "oauth" }> {
   const claims = t.id_token ? codexClaimsFromJwt(t.id_token) : {};
-  if (!claims.account_id) {
+  // On refresh the token response usually omits id_token; keep the account_id
+  // captured at login instead of hard-failing.
+  const account_id = claims.account_id ?? prev?.account_id;
+  if (!account_id) {
     throw new Error("this account has no ChatGPT plan");
   }
   return {
@@ -95,7 +98,7 @@ function tokenToCred(t: TokenResponse, prev?: Extract<Credential, { type: "oauth
     access: t.access_token,
     refresh: t.refresh_token ?? prev?.refresh,
     expires: Date.now() + t.expires_in * 1000 - SKEW_MS,
-    account_id: claims.account_id,
+    account_id,
     email: claims.email ?? prev?.email,
     enterprise_url: prev?.enterprise_url,
   };

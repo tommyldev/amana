@@ -14,7 +14,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import type { UsageEventRow } from "../db/types.ts";
-import { getSync, setSync } from "../db/syncState.ts";
+import { getSync } from "../db/syncState.ts";
 
 export interface ScanOptions {
   /** Ingestion source key in the sync_state table (e.g. "omp"). */
@@ -70,12 +70,12 @@ export async function tailFile(
   source: string,
   path: string,
   parseLine: (line: string) => UsageEventRow | null,
-): Promise<{ rows: UsageEventRow[]; changed: boolean }> {
+): Promise<{ rows: UsageEventRow[]; changed: boolean; newOffset: number; mtimeMs: number }> {
   let meta;
   try {
     meta = await stat(path);
   } catch {
-    return { rows: [], changed: false };
+    return { rows: [], changed: false, newOffset: 0, mtimeMs: 0 };
   }
   const mtimeMs = Math.floor(meta.mtimeMs);
   const size = meta.size;
@@ -83,7 +83,7 @@ export async function tailFile(
   let offset = cursor?.offset ?? 0;
   if (size < offset) offset = 0;
   if (cursor && cursor.mtime_ms === mtimeMs && size >= offset) {
-    return { rows: [], changed: false };
+    return { rows: [], changed: false, newOffset: offset, mtimeMs };
   }
   let buf: Buffer;
   try {
@@ -95,7 +95,7 @@ export async function tailFile(
       await fh.close();
     }
   } catch {
-    return { rows: [], changed: false };
+    return { rows: [], changed: false, newOffset: offset, mtimeMs };
   }
   const newOffset = offset + buf.length;
   const rows: UsageEventRow[] = [];
@@ -112,8 +112,7 @@ export async function tailFile(
       }
     }
   }
-  setSync(db, source, path, newOffset, mtimeMs);
-  return { rows, changed: true };
+  return { rows, changed: true, newOffset, mtimeMs };
 }
 
 /** Drop sync_state rows for the given source so the next tailFile re-reads from 0. */

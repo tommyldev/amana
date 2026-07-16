@@ -20,13 +20,13 @@ import type { UsageFetcher } from "../fetcher.ts";
 const DEFAULT_ENDPOINT = "https://cloudcode-pa.googleapis.com";
 
 interface QuotaInfo {
-  remainingFraction?: number;
-  resetTime?: string;
+  remaining_fraction?: number;
+  reset_time?: string;
   tier?: string;
-  windowId?: string;
-  windowLabel?: string;
-  apiProvider?: string;
-  modelProvider?: string;
+  window_id?: string;
+  window_label?: string;
+  api_provider?: string;
+  model_provider?: string;
 }
 
 interface ModelInfo {
@@ -41,7 +41,7 @@ interface ModelsResponse {
 }
 
 function counterName(info: QuotaInfo): string {
-  const provider = info.modelProvider ?? info.apiProvider;
+  const provider = info.model_provider ?? info.api_provider;
   switch (provider) {
     case "MODEL_PROVIDER_ANTHROPIC":
     case "API_PROVIDER_ANTHROPIC_VERTEX":
@@ -58,13 +58,13 @@ function counterName(info: QuotaInfo): string {
 }
 
 function parseWindow(info: QuotaInfo): UsageWindow | undefined {
-  const reset = info.resetTime;
+  const reset = info.reset_time;
   if (!reset) return undefined;
   const ts = Date.parse(reset);
   if (!Number.isFinite(ts)) return undefined;
   return {
-    id: info.windowId ?? "default",
-    label: info.windowLabel ?? "Default",
+    id: info.window_id ?? "default",
+    label: info.window_label ?? "Default",
     durationMs: undefined,
     resetsAt: ts,
   };
@@ -86,9 +86,9 @@ function buildLimit(
   projectId: string | undefined,
 ): UsageLimit {
   const remainingFraction =
-    info.remainingFraction !== undefined
-      ? Math.max(0, Math.min(1, info.remainingFraction))
-      : info.resetTime !== undefined
+    info.remaining_fraction !== undefined
+      ? Math.max(0, Math.min(1, info.remaining_fraction))
+      : info.reset_time !== undefined
       ? 0
       : undefined;
   const usedFraction = remainingFraction === undefined ? undefined : Math.max(0, Math.min(1, 1 - remainingFraction));
@@ -99,7 +99,7 @@ function buildLimit(
     orgId: undefined,
     modelId: undefined,
     tier: info.tier,
-    windowId: info.windowId ?? window?.id,
+    windowId: info.window_id ?? window?.id,
     shared: true,
   };
   const amount: UsageAmount = {
@@ -134,17 +134,17 @@ function normalize(
     if (model.quota_infos) infos.push(...model.quota_infos);
     for (const raw of infos) {
       const info: QuotaInfo = { ...raw };
-      if (info.apiProvider === undefined) info.apiProvider = model.api_provider;
-      if (info.modelProvider === undefined) info.modelProvider = model.model_provider;
+      if (info.api_provider === undefined) info.api_provider = model.api_provider;
+      if (info.model_provider === undefined) info.model_provider = model.model_provider;
       const counter = counterName(info);
       const tier = (info.tier ?? "default").toLowerCase();
-      const windowId = info.windowId ?? "default";
+      const windowId = info.window_id ?? "default";
       const key = `${counter.toLowerCase()}|${tier}|${windowId}`;
       const window = parseWindow(info);
       const prev = deduped.get(key);
       if (prev) {
-        const curr = info.remainingFraction ?? 0;
-        const old = prev.info.remainingFraction ?? 1;
+        const curr = info.remaining_fraction ?? 0;
+        const old = prev.info.remaining_fraction ?? 1;
         if (curr < old) deduped.set(key, { info, window, counter });
       } else {
         deduped.set(key, { info, window, counter });

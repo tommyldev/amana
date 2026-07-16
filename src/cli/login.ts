@@ -25,13 +25,13 @@ function kindFor(id: string): LoginKind | undefined {
   switch (id) {
     case "zai":
     case "github-copilot":
-    case "openai-codex":
-    case "minimax-code":
-    case "minimax-code-cn":
       return "ApiKey";
     case "anthropic":
     case "google-antigravity":
     case "google-gemini-cli":
+    case "openai-codex":
+    case "minimax-code":
+    case "minimax-code-cn":
     case "kimi-code":
     case "xai-oauth":
       return "OAuth";

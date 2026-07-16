@@ -145,7 +145,9 @@ function parseModels(provider: string, rows: ModelRemain[], account: string): Us
     representative.end_time,
   );
   if (five) limits.push(five);
-  if ((representative.current_weekly_status ?? 1) !== 0) {
+  const wStatus = representative.current_weekly_status ?? 1;
+  // 0 = no weekly plan, 3 = unlimited → emit no weekly limit; 2 = exhausted.
+  if (wStatus !== 0 && wStatus !== 3) {
     const weekly = buildWindowLimit(
       provider,
       account,
@@ -158,7 +160,10 @@ function parseModels(provider: string, rows: ModelRemain[], account: string): Us
       representative.current_weekly_remaining_percent,
       representative.weekly_end_time,
     );
-    if (weekly) limits.push(weekly);
+    if (weekly) {
+      if (wStatus === 2) weekly.status = "exhausted";
+      limits.push(weekly);
+    }
   }
   return limits;
 }

@@ -12,6 +12,7 @@ import type { UsageEventRow } from "../db/types.ts";
 import { claudeDir } from "../config/paths.ts";
 import { insertEventsDedupCompletion } from "../db/usage.ts";
 import { ensureProvider } from "../db/providers.ts";
+import { setSync } from "../db/syncState.ts";
 import { cost } from "../price.ts";
 import { collectJsonlFiles, resetCursor, tailFile } from "./scan.ts";
 
@@ -95,8 +96,10 @@ export async function ingestClaudeCode(
   if (full) resetCursor(db, "claude-code", files);
   let total = 0;
   for (const path of files) {
-    const { rows } = await tailFile(db, "claude-code", path, parseClaudeCodeLine);
+    const { rows, changed, newOffset, mtimeMs } = await tailFile(db, "claude-code", path, parseClaudeCodeLine);
+    if (!changed) continue;
     if (rows.length > 0) total += insertEventsDedupCompletion(db, rows);
+    setSync(db, "claude-code", path, newOffset, mtimeMs);
   }
   return { inserted: total, status: "ok" };
 }

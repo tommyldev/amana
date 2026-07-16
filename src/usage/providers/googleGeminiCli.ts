@@ -26,8 +26,8 @@ interface LoadCodeAssistResponse {
 
 interface QuotaBucket {
   model_id?: string;
-  remainingFraction?: number;
-  resetTime?: string;
+  remaining_fraction?: number;
+  reset_time?: string;
 }
 
 interface RetrieveUserQuotaResponse {
@@ -70,7 +70,7 @@ function buildLimit(
   projectId: string,
 ): UsageLimit {
   const remainingFraction =
-    bucket.remainingFraction === undefined ? undefined : Math.max(0, Math.min(1, bucket.remainingFraction));
+    bucket.remaining_fraction === undefined ? undefined : Math.max(0, Math.min(1, bucket.remaining_fraction));
   const usedFraction = remainingFraction === undefined ? undefined : 1 - remainingFraction;
   const modelId = bucket.model_id ?? "unknown";
   const tier = bucket.model_id ? tierFor(bucket.model_id) : undefined;
@@ -88,7 +88,7 @@ function buildLimit(
     id: "quota",
     label: "Quota window",
     durationMs: undefined,
-    resetsAt: bucket.resetTime !== undefined ? parseTime(bucket.resetTime) : undefined,
+    resetsAt: bucket.reset_time !== undefined ? parseTime(bucket.reset_time) : undefined,
   };
   const amount: UsageAmount = {
     used: usedFraction === undefined ? undefined : usedFraction * 100,

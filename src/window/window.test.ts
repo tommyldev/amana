@@ -24,6 +24,17 @@ test("weekly window anchors on the target weekday", () => {
   expect(aw.nextReset).toBe(utc(2026, 6, 29, 0, 0));
 });
 
+test("weekly window: non-Monday target returns the current week's occurrence", () => {
+  // 2026-06-26 is a Friday; target Fri => start today (not the previous week).
+  const fri = activeAt({ type: "weekly", weekday: 4 }, utc(2026, 6, 26, 12, 0));
+  expect(fri.start).toBe(utc(2026, 6, 26, 0, 0));
+  expect(fri.nextReset).toBe(utc(2026, 7, 3, 0, 0));
+  // Same Friday, target Tue => most recent Tuesday is 2026-06-23 (this week).
+  const tue = activeAt({ type: "weekly", weekday: 1 }, utc(2026, 6, 26, 12, 0));
+  expect(tue.start).toBe(utc(2026, 6, 23, 0, 0));
+  expect(tue.nextReset).toBe(utc(2026, 6, 30, 0, 0));
+});
+
 test("monthly day-31 clamps within February", () => {
   const aw = activeAt({ type: "monthly", day: 31 }, utc(2026, 2, 15, 12, 0));
   expect(aw.start).toBe(utc(2026, 1, 31, 0, 0));

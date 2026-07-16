@@ -10,6 +10,7 @@ import type { UsageEventRow } from "../db/types.ts";
 import { ompDir } from "../config/paths.ts";
 import { insertEvents } from "../db/usage.ts";
 import { ensureProvider } from "../db/providers.ts";
+import { setSync } from "../db/syncState.ts";
 import { collectJsonlFiles, resetCursor, tailFile } from "./scan.ts";
 
 interface OmpEntry {
@@ -101,8 +102,10 @@ export async function ingestOmp(
   if (full) resetCursor(db, "omp", files);
   let total = 0;
   for (const path of files) {
-    const { rows } = await tailFile(db, "omp", path, parseOmpLine);
+    const { rows, changed, newOffset, mtimeMs } = await tailFile(db, "omp", path, parseOmpLine);
+    if (!changed) continue;
     if (rows.length > 0) total += insertEvents(db, rows);
+    setSync(db, "omp", path, newOffset, mtimeMs);
   }
   return { inserted: total, status: "ok" };
 }

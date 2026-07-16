@@ -87,16 +87,16 @@ interface JsonLimit {
   status: string;
   used?: number;
   limit?: number;
-  usedFraction?: number;
+  used_fraction?: number;
   unit: string;
-  windowLabel?: string;
-  windowResetsAt?: number;
+  window_label?: string;
+  window_resets_at?: number;
 }
 
 interface JsonReport {
   provider: string;
   account: string;
-  fetchedAt: number;
+  fetched_at: number;
   limits: JsonLimit[];
 }
 
@@ -104,7 +104,7 @@ function toJsonReport(r: UsageReport): JsonReport {
   return {
     provider: r.provider,
     account: r.account,
-    fetchedAt: r.fetchedAt,
+    fetched_at: r.fetchedAt,
     limits: r.limits.map(toJsonLimit),
   };
 }
@@ -117,9 +117,9 @@ function toJsonLimit(l: UsageLimit): JsonLimit {
     status: l.status,
     used: l.amount.used,
     limit: l.amount.limit,
-    usedFraction: l.amount.usedFraction,
+    used_fraction: l.amount.usedFraction,
     unit: unitShort(l.amount.unit),
-    windowLabel: l.window?.label,
-    windowResetsAt: l.window?.resetsAt,
+    window_label: l.window?.label,
+    window_resets_at: l.window?.resetsAt,
   };
 }
