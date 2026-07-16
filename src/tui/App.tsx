@@ -4,6 +4,7 @@ import type { Database } from "bun:sqlite";
 import type { Config } from "../config/types.ts";
 import { initialState, reducer, type Tab, type TuiState } from "./state.ts";
 import { useRefresh } from "./useRefresh.ts";
+import { useTerminalSize } from "./useTerminalSize.ts";
 import { deriveLimitRows, type LimitRow } from "./views/derive.ts";
 import { Tabs } from "./widgets/Tabs.tsx";
 import { Footer } from "./widgets/Footer.tsx";
@@ -25,6 +26,7 @@ const BANNER_TTL_MS = 60_000;
 export function App({ db, cfg, dataDir }: { db: Database; cfg: Config; dataDir: string }): React.JSX.Element {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const { exit } = useApp();
+  const { columns, rows } = useTerminalSize();
   const refresh = useRefresh({ db, cfg, dataDir, span: state.span, dispatch });
 
   const limitRows = useMemo(() => deriveLimitRows(state.reports, state.errors), [state.reports, state.errors]);
@@ -80,9 +82,19 @@ export function App({ db, cfg, dataDir }: { db: Database; cfg: Config; dataDir: 
   const footer = footerPairs(state.tab, drilled);
 
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box
+      flexDirection="column"
+      width={columns}
+      height={rows}
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={1}
+    >
       <Box justifyContent="space-between">
-        <Tabs tabs={TAB_LABELS.map((t) => t.label)} active={activeTab} />
+        <Box>
+          <Text bold color="cyan">atop </Text>
+          <Tabs tabs={TAB_LABELS.map((t) => t.label)} active={activeTab} />
+        </Box>
         {state.syncing ? <Text dimColor>syncing…</Text> : null}
       </Box>
       {state.banner ? (
@@ -90,9 +102,10 @@ export function App({ db, cfg, dataDir }: { db: Database; cfg: Config; dataDir: 
           {state.banner}
         </Text>
       ) : null}
-      <Box marginY={1}>{renderView(state, db, limitRows)}</Box>
+      <Box flexGrow={1} flexDirection="column" marginTop={1}>
+        {state.helpVisible ? <HelpOverlay visible /> : renderView(state, db, limitRows)}
+      </Box>
       <Footer pairs={footer} />
-      <HelpOverlay visible={state.helpVisible} />
     </Box>
   );
 }
