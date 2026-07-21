@@ -1,4 +1,4 @@
-# amana
+# amana - Agent Mana
 
 **A**gent **T**oken **O**bserver & **M**onitor — a single-binary TypeScript/Bun
 CLI + TUI that ingests AI usage from local agent logs and admin APIs, fetches
