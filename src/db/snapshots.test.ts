@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { openDb } from "./db.ts";
-import { recordSnapshots, pruneSnapshots, snapshotDeltaSeries } from "./snapshots.ts";
+import { recordSnapshots, pruneSnapshots, snapshotDeltaSeries, snapshotLevelSeries } from "./snapshots.ts";
 import type { UsageReport, UsageUnit } from "../usage/types.ts";
 // Wed 2026-01-14 12:00 UTC.
 const T0 = Date.UTC(2026, 0, 14, 12, 0, 0);
@@ -206,6 +206,38 @@ describe("pruneSnapshots", () => {
     );
     expect(pruneSnapshots(db, T0 + 5 * MIN)).toBe(1);
     expect(db.query("SELECT COUNT(*) AS n FROM usage_snapshots").get()).toEqual({ n: 1 });
+    db.close();
+  });
+});
+
+describe("snapshotLevelSeries", () => {
+  test("returns null when the provider has no snapshots", () => {
+    const db = openDb(":memory:");
+    expect(snapshotLevelSeries(db, T0, T0 + HOUR, "zai", 1)).toBeNull();
+    db.close();
+  });
+
+  test("charts the most binding window's used ramp, last sample per bucket", () => {
+    const db = openDb(":memory:");
+    const resetsA = T0 + 5 * HOUR;
+    recordSnapshots(
+      db,
+      recs(
+        // 5h window at 80% (800/1000) — most binding, should be picked.
+        report("anthropic", "anthropic:5h", "percent", T0 + 10 * MIN, 40, resetsA, 100),
+        report("anthropic", "anthropic:5h", "percent", T0 + 50 * MIN, 55, resetsA, 100),
+        report("anthropic", "anthropic:5h", "percent", T0 + 70 * MIN, 80, resetsA, 100),
+        // 7d window at 20% — less binding.
+        report("anthropic", "anthropic:7d", "percent", T0 + 70 * MIN, 20, resetsA, 100),
+      ),
+    );
+    const level = snapshotLevelSeries(db, T0, T0 + 2 * HOUR, "anthropic", 2);
+    expect(level).not.toBeNull();
+    // Bucket 0: last 5h sample in hour 1 is 55 (T0+50min). Bucket 1: 80.
+    expect(level!.series).toEqual([55, 80]);
+    expect(level!.unit).toBe("percent");
+    expect(level!.latestUsed).toBe(80);
+    expect(level!.latestLimit).toBe(100);
     db.close();
   });
 });

@@ -179,3 +179,75 @@ export function snapshotDeltaSeries(
   }
   return out;
 }
+
+export interface SnapshotLevel {
+  /** Last `used` sample per bucket (0 where no poll landed). */
+  series: number[];
+  unit: string;
+  latestUsed: number;
+  latestLimit: number | null;
+}
+
+/**
+ * Quota-fill level over time for one provider: the raw `used` ramp of its
+ * most binding window (largest used/limit at the latest poll). Unlike the
+ * delta series this is meaningful from the very first poll — it charts how
+ * full the quota is, not how fast it is being consumed — so the drill-in
+ * has something to show while deltas accumulate. Returns null when the
+ * provider has no snapshots at all.
+ */
+export function snapshotLevelSeries(
+  db: Database,
+  startMs: number,
+  endMs: number,
+  provider: string,
+  buckets: number,
+): SnapshotLevel | null {
+  if (buckets <= 0 || endMs <= startMs) return null;
+  const latest = db
+    .query(
+      `SELECT limit_id, used, limit_amount, unit, fetched_at_ms
+       FROM usage_snapshots WHERE provider = ?
+       ORDER BY fetched_at_ms DESC LIMIT 16`,
+    )
+    .all(provider) as {
+    limit_id: string;
+    used: number | null;
+    limit_amount: number | null;
+    unit: string;
+    fetched_at_ms: number;
+  }[];
+  if (latest.length === 0) return null;
+  // Rows from the newest poll only; pick the most binding window.
+  const newest = latest.filter((r) => r.fetched_at_ms === latest[0]!.fetched_at_ms);
+  let pick = newest[0]!;
+  let pickRatio = -1;
+  for (const r of newest) {
+    const ratio =
+      r.used !== null && r.limit_amount !== null && r.limit_amount > 0
+        ? r.used / r.limit_amount
+        : (r.used ?? 0) > 0
+          ? 0
+          : -1;
+    if (ratio > pickRatio || (ratio === pickRatio && (r.used ?? 0) > (pick.used ?? 0))) {
+      pick = r;
+      pickRatio = ratio;
+    }
+  }
+
+  const step = Math.max(Math.floor((endMs - startMs) / buckets), 1);
+  const series = new Array<number>(buckets).fill(0);
+  const rows = db
+    .query(
+      `SELECT fetched_at_ms, used FROM usage_snapshots
+       WHERE provider = ? AND limit_id = ? AND fetched_at_ms >= ? AND fetched_at_ms < ?
+       ORDER BY fetched_at_ms`,
+    )
+    .all(provider, pick.limit_id, startMs, endMs) as { fetched_at_ms: number; used: number | null }[];
+  for (const r of rows) {
+    if (r.used === null) continue;
+    const idx = Math.floor((r.fetched_at_ms - startMs) / step);
+    if (idx >= 0 && idx < buckets) series[idx] = r.used;
+  }
+  return { series, unit: pick.unit, latestUsed: pick.used ?? 0, latestLimit: pick.limit_amount };
+}

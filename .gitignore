@@ -3,3 +3,13 @@ dist/
 node_modules/
 *.log
 oh-my-pi/
+
+# local secrets & data — never commit credentials or usage databases
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+credentials*.json

@@ -12,8 +12,21 @@ import { percentEncode, pkce, randomState } from "./pkce.ts";
 
 type OAuthCred = Extract<Credential, { type: "oauth" }>;
 
-const CLIENT_ID = "GOOGLE_CLIENT_ID_REDACTED";
-const CLIENT_SECRET = "GOOGLE_CLIENT_SECRET_REDACTED";
+// Google OAuth "installed app" client. Not embedded in the repo — GitHub push
+// protection flags Google client id/secret pairs — so both come from env.
+// Create a Desktop-app OAuth client at
+// https://console.cloud.google.com/apis/credentials and export:
+//   ATOP_GOOGLE_CLIENT_ID / ATOP_GOOGLE_CLIENT_SECRET
+function googleClient(): { id: string; secret: string } {
+  const id = process.env["ATOP_GOOGLE_CLIENT_ID"];
+  const secret = process.env["ATOP_GOOGLE_CLIENT_SECRET"];
+  if (!id || !secret) {
+    throw new Error(
+      "google oauth: set ATOP_GOOGLE_CLIENT_ID and ATOP_GOOGLE_CLIENT_SECRET (Desktop-app OAuth client)",
+    );
+  }
+  return { id, secret };
+}
 const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
@@ -34,10 +47,11 @@ interface TokenResponse {
 }
 
 export async function login(provider?: string, ui: LoginUi = cliUi()): Promise<OAuthCred> {
+  const client = googleClient();
   const { verifier, challenge } = pkce();
   const state = randomState();
   const url =
-    `${AUTHORIZE_URL}?client_id=${CLIENT_ID}` +
+    `${AUTHORIZE_URL}?client_id=${client.id}` +
     `&response_type=code&redirect_uri=${percentEncode(REDIRECT_URI)}` +
     `&scope=${percentEncode(SCOPES)}` +
     `&access_type=offline&prompt=consent` +
@@ -51,8 +65,8 @@ export async function login(provider?: string, ui: LoginUi = cliUi()): Promise<O
   );
   const text = await postJsonRaw(TOKEN_URL, {
     grant_type: "authorization_code",
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
+    client_id: client.id,
+    client_secret: client.secret,
     code,
     state: returnedState,
     redirect_uri: REDIRECT_URI,
@@ -82,10 +96,11 @@ export async function refresh(cred: Credential): Promise<OAuthCred> {
   if (cred.type !== "oauth" || !cred.refresh) {
     throw new Error("google refresh: missing refresh token");
   }
+  const client = googleClient();
   const text = await postJsonRaw(TOKEN_URL, {
     grant_type: "refresh_token",
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
+    client_id: client.id,
+    client_secret: client.secret,
     refresh_token: cred.refresh,
   });
   const next = tokenToCred(JSON.parse(text) as TokenResponse, cred.refresh);
