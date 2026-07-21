@@ -56,6 +56,27 @@ test("parseClaudeCodeLine: real assistant line", () => {
   expect(row.timestamp_ms).toBe(Date.UTC(2026, 5, 27, 10, 0, 0));
 });
 
+test("parseClaudeCodeLine: cache tokens are included in computed cost", () => {
+  const line =
+    `{"type":"assistant","uuid":"c1","timestamp":"2026-06-27T10:00:00Z","message":{` +
+    `"role":"assistant","model":"claude-3-5-sonnet-20240620",` +
+    `"usage":{"input_tokens":1000,"output_tokens":500,` +
+    `"cache_read_input_tokens":1000000,"cache_creation_input_tokens":200000}}}`;
+  const row = parseClaudeCodeLine(line)!;
+  expect(row.cache_read_tokens).toBe(1_000_000);
+  expect(row.cache_write_tokens).toBe(200_000);
+  // input 1000@$3 + output 500@$15 + cacheRead 1M@(3*0.1) + cacheWrite 200k@(3*1.25)
+  const expected =
+    (1000 / 1_000_000) * 3.0 +
+    (500 / 1_000_000) * 15.0 +
+    (1_000_000 / 1_000_000) * 3.0 * 0.1 +
+    (200_000 / 1_000_000) * 3.0 * 1.25;
+  expect(row.cost_usd).toBeCloseTo(expected, 9);
+  // Cache-blind cost would omit the 0.3 + 0.75 cache terms.
+  const blind = (1000 / 1_000_000) * 3.0 + (500 / 1_000_000) * 15.0;
+  expect(row.cost_usd! - blind).toBeCloseTo(0.3 + 0.75, 9);
+});
+
 test("parseClaudeCodeLine: non-claude model → provider unknown", () => {
   const line =
     `{"type":"assistant","uuid":"u9","timestamp":"2026-06-27T10:00:00Z",` +

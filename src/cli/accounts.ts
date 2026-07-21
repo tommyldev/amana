@@ -1,5 +1,5 @@
 /**
- * `atop accounts list` / `atop accounts remove <provider> [--account <label>]`
+ * `amana accounts list` / `amana accounts remove <provider> [--account <label>]`
  * — inspect and prune stored provider credentials.
  *
  * Port of `legacy-rust/src/cli/accounts_cmd.rs`. Removal matches on either

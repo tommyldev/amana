@@ -25,10 +25,16 @@ import type { FetchError } from "../usage/orchestrator.ts";
 import type { AccountRow, Action } from "./state.ts";
 import { runSync } from "../ingest/sync.ts";
 import { fetchAll } from "../usage/orchestrator.ts";
-import { hourlyByProvider } from "../db/series.ts";
+import { hourlyByProvider, windowSeries } from "../db/series.ts";
 import { allProviders, load } from "../auth/store.ts";
 import { accountLabel } from "../auth/types.ts";
 import { checkAndFire } from "../alerts/engine.ts";
+import { localAlertReports } from "../alerts/local.ts";
+import { buildSnapshot, sourcesFor, type Snapshot } from "../report/snapshot.ts";
+import { buildOverviewRows, type OverviewRow } from "./views/derive.ts";
+import { buildLimitRows, type LimitRow } from "./views/limitRows.ts";
+import { byId } from "../registry.ts";
+import { recordSnapshots, pruneSnapshots, snapshotDeltaSeries } from "../db/snapshots.ts";
 
 const HOUR_MS = 3_600_000;
 
@@ -85,7 +91,7 @@ export function useRefresh(args: {
       try {
         await runSync(db, cfg, dataDir, false);
       } catch (e) {
-        console.error("[atop] runSync failed:", e instanceof Error ? e.message : e);
+        console.error("[amana] runSync failed:", e instanceof Error ? e.message : e);
       }
 
       // 2. Live usage fetches per stored credential.
@@ -96,7 +102,16 @@ export function useRefresh(args: {
         reports = result.reports;
         errors = result.errors;
       } catch (e) {
-        console.error("[atop] fetchAll failed:", e instanceof Error ? e.message : e);
+        console.error("[amana] fetchAll failed:", e instanceof Error ? e.message : e);
+      }
+
+      // 2b. Persist + prune snapshots. Cheap DB writes; one shared catch so a
+      // prune failure can't stop a record (and vice versa).
+      try {
+        recordSnapshots(db, reports);
+        pruneSnapshots(db, Date.now() - 30 * 24 * 60 * 60 * 1000);
+      } catch (e) {
+        console.error("[amana] recordSnapshots failed:", e instanceof Error ? e.message : e);
       }
 
       // 3. Hourly token series for the current span window.
@@ -108,8 +123,21 @@ export function useRefresh(args: {
         for (const p of tokenSeries) {
           for (let i = 0; i < span; i++) totalSeries[i] += p.buckets[i] ?? 0;
         }
+
+        // Snapshot deltas: providers with only a limits API (zai/anthropic/
+        // google/xai/...) feed the overview chart here. Exclude providers
+        // already covered by log ingestion to avoid double-counting. Wrapped
+        // separately so a snapshot failure can't corrupt the log-derived
+        // totalSeries.
+        try {
+          const logProviders = new Set(tokenSeries.filter((p) => p.totalTokens > 0).map((p) => p.provider));
+          const snapTokens = snapshotDeltaSeries(db, startMs, startMs + span * HOUR_MS, { buckets: span, unit: "tokens", excludeProviders: logProviders });
+          for (let i = 0; i < span; i++) totalSeries[i] = (totalSeries[i] ?? 0) + (snapTokens[i] ?? 0);
+        } catch (e) {
+          console.error("[amana] snapshotDeltaSeries failed:", e instanceof Error ? e.message : e);
+        }
       } catch (e) {
-        console.error("[atop] hourlyByProvider failed:", e instanceof Error ? e.message : e);
+        console.error("[amana] hourlyByProvider failed:", e instanceof Error ? e.message : e);
       }
 
       // 4. Accounts.
@@ -117,12 +145,43 @@ export function useRefresh(args: {
       try {
         accounts = buildAccountRows(dataDir, errors, Date.now());
       } catch (e) {
-        console.error("[atop] account build failed:", e instanceof Error ? e.message : e);
+        console.error("[amana] account build failed:", e instanceof Error ? e.message : e);
       }
 
-      // 5. Alerts → banner on the latest fired event.
+      // 4b. Overview rows: live quota when logged in, else per-provider token
+      // usage over the selected span (source-scoped so aggregate ids like
+      // omp/claude-code attribute correctly).
+      let overviewRows: OverviewRow[] = [];
       try {
-        const fired = checkAndFire(db, cfg.alerts, reports);
+        const startMs = Math.floor(Date.now() / HOUR_MS) * HOUR_MS - (span - 1) * HOUR_MS;
+        const endMs = startMs + span * HOUR_MS;
+        const spanTotals = new Map<string, number>();
+        for (const prov of cfg.providers) {
+          if (!prov.enabled) continue;
+          const buckets = windowSeries(db, startMs, endMs, sourcesFor(prov.id), byId(prov.id)?.ompProvider ?? undefined, span);
+          spanTotals.set(prov.id, buckets.reduce((s, v) => s + v, 0));
+        }
+        overviewRows = buildOverviewRows(cfg, reports, errors, spanTotals, span);
+      } catch (e) {
+        console.error("[amana] overview build failed:", e instanceof Error ? e.message : e);
+      }
+
+      // 4c. Limit rows (default view): live quota, else configured caps.
+      let limitRows: LimitRow[] = [];
+      let snap: Snapshot | undefined;
+      try {
+        snap = buildSnapshot(db, cfg, Date.now());
+        limitRows = buildLimitRows(cfg, reports, errors, snap);
+      } catch (e) {
+        console.error("[amana] limits build failed:", e instanceof Error ? e.message : e);
+      }
+
+      // 5. Alerts → banner. Local providers with a configured token cap are
+      // evaluated alongside live quota (deduped per reset) — no login needed.
+      try {
+        const liveProviders = new Set(reports.map((r) => r.provider));
+        const localReports = snap ? localAlertReports(cfg, snap, liveProviders) : [];
+        const fired = checkAndFire(db, cfg.alerts, [...reports, ...localReports]);
         const last = fired[fired.length - 1];
         if (last) {
           dispatch({
@@ -131,11 +190,11 @@ export function useRefresh(args: {
           });
         }
       } catch (e) {
-        console.error("[atop] checkAndFire failed:", e instanceof Error ? e.message : e);
+        console.error("[amana] checkAndFire failed:", e instanceof Error ? e.message : e);
       }
 
       // 6. Push the snapshot.
-      dispatch({ t: "setData", reports, errors, tokenSeries, totalSeries, accounts });
+      dispatch({ t: "setData", overviewRows, limitRows, reports, errors, tokenSeries, totalSeries, accounts });
     } finally {
       inFlight.current = false;
       dispatch({ t: "setSyncing", on: false });

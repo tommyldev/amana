@@ -1,0 +1,4 @@
+=== LIMITS with monthly cost cap (spend vs cap gauge) ===
+limits
+› oh-my-pi (omp) logs      usage · rolling 5h · 1.0k tok · resets in 3h 02m · local
+  oh-my-pi (omp) logs    ● █████████████░░░░░░░ 64%  monthly cost cap · $6.40 / $10.00 · local

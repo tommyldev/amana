@@ -1,0 +1,13 @@
+=== POPULATED (multi-window local) ===
+limits
+› Claude Code logs         usage · rolling 5h · 100 tok · local
+  Claude Code logs         usage · weekly mon · 1.0k tok · local
+  oh-my-pi (omp) logs      usage · rolling 5h · 50 tok · local
+
+=== EMPTY (no providers enabled) ===
+limits
+no providers enabled — run `amana login <provider>` or press p
+
+=== ERROR (fetch failed) ===
+limits
+› Z.AI · auth expired

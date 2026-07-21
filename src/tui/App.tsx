@@ -1,50 +1,58 @@
-import React, { useEffect, useMemo, useReducer } from "react";
+import React, { useEffect, useReducer } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import type { Database } from "bun:sqlite";
 import type { Config } from "../config/types.ts";
+import { saveConfig } from "../config/config.ts";
+import { notify } from "../alerts/notify.ts";
 import { initialState, reducer, type Tab, type TuiState } from "./state.ts";
 import { useRefresh } from "./useRefresh.ts";
 import { useTerminalSize } from "./useTerminalSize.ts";
-import { deriveLimitRows, type LimitRow } from "./views/derive.ts";
 import { Tabs } from "./widgets/Tabs.tsx";
 import { Footer } from "./widgets/Footer.tsx";
 import { HelpOverlay } from "./widgets/HelpOverlay.tsx";
-import { TokensView } from "./views/TokensView.tsx";
-import { TokensProviderView } from "./views/TokensProviderView.tsx";
+import { OverviewView } from "./views/OverviewView.tsx";
+import { ProviderView } from "./views/ProviderView.tsx";
+import { SettingsView } from "./views/SettingsView.tsx";
 import { LimitsView } from "./views/LimitsView.tsx";
-import { LimitsProviderView } from "./views/LimitsProviderView.tsx";
-import { AccountsView } from "./views/AccountsView.tsx";
+import { ProvidersView } from "./views/ProvidersView.tsx";
+import { useProviderLogin } from "./login/useProviderLogin.ts";
+import type { LoginRequest } from "./login/perform.ts";
 
-const TAB_LABELS: { tab: Tab; label: string }[] = [
+const TABS: { tab: Tab; label: string }[] = [
   { tab: "limits", label: "Limits" },
-  { tab: "tokens", label: "Tokens" },
-  { tab: "accounts", label: "Accounts" },
+  { tab: "overview", label: "Overview" },
+  { tab: "settings", label: "Settings" },
 ];
-
 const BANNER_TTL_MS = 60_000;
 
-export function App({ db, cfg, dataDir }: { db: Database; cfg: Config; dataDir: string }): React.JSX.Element {
-  const [state, dispatch] = useReducer(reducer, undefined, initialState);
+export function App({
+  db,
+  cfg,
+  dataDir,
+  configFile,
+  reopenProvider,
+}: {
+  db: Database;
+  cfg: Config;
+  dataDir: string;
+  configFile: string;
+  onLogin?: (req: LoginRequest) => void;
+  reopenProvider?: string;
+}): React.JSX.Element {
+  const [state, dispatch] = useReducer(reducer, cfg.alerts, initialState);
   const { exit } = useApp();
   const { columns, rows } = useTerminalSize();
   const refresh = useRefresh({ db, cfg, dataDir, span: state.span, dispatch });
+  const providerLogin = useProviderLogin({ db, cfg, configFile, dataDir, accounts: state.accounts, refresh, dispatch });
 
-  const limitRows = useMemo(() => deriveLimitRows(state.reports, state.errors), [state.reports, state.errors]);
+  useEffect(() => {
+    if (reopenProvider) providerLogin.openDetail(reopenProvider);
+  }, [reopenProvider]);
 
   const drilled = state.drillProvider !== null;
-  const count = drilled
-    ? 0
-    : state.tab === "tokens"
-      ? state.tokenSeries.length
-      : state.tab === "limits"
-        ? limitRows.length
-        : state.accounts.length;
-  const drillId =
-    state.tab === "tokens"
-      ? state.tokenSeries[state.selection]?.provider
-      : state.tab === "limits"
-        ? limitRows[state.selection]?.provider
-        : undefined;
+  const listRows = state.tab === "limits" ? state.limitRows : state.overviewRows;
+  const count = listRows.length;
+  const selectedId = listRows[state.selection]?.provider;
 
   useEffect(() => {
     if (state.bannerAt === null) return;
@@ -52,78 +60,110 @@ export function App({ db, cfg, dataDir }: { db: Database; cfg: Config; dataDir: 
     return () => clearTimeout(timer);
   }, [state.bannerAt]);
 
+  // Persist alert settings to config.toml (and the live cfg the refresh loop reads).
+  useEffect(() => {
+    cfg.alerts.enabled = state.settings.enabled;
+    cfg.alerts.desktop = state.settings.desktop;
+    cfg.alerts.thresholds = [...state.settings.thresholds];
+    saveConfig(configFile, cfg);
+  }, [state.settings, cfg, configFile]);
+
   useInput((input, key) => {
     if (state.helpVisible) {
       if (input === "?" || input === "h" || key.escape) dispatch({ t: "toggleHelp" });
       return;
     }
+    if (providerLogin.active) {
+      providerLogin.handleInput(input, key);
+      return;
+    }
+    if (state.tab === "settings" && state.editing) {
+      if (key.return) return dispatch({ t: "editCommit" });
+      if (key.escape) return dispatch({ t: "editCancel" });
+      if (key.backspace || key.delete) return dispatch({ t: "editBackspace" });
+      if (input && /^[0-9,]$/.test(input)) return dispatch({ t: "editChar", ch: input });
+      return;
+    }
     if (input === "q" || (key.ctrl && input === "c")) return exit();
     if (input === "?" || input === "h") return dispatch({ t: "toggleHelp" });
     if (input === "1") return dispatch({ t: "setTab", tab: "limits" });
-    if (input === "2") return dispatch({ t: "setTab", tab: "tokens" });
-    if (input === "3") return dispatch({ t: "setTab", tab: "accounts" });
+    if (input === "2") return dispatch({ t: "setTab", tab: "overview" });
+    if (input === "3") return dispatch({ t: "setTab", tab: "settings" });
     if (key.tab) return dispatch({ t: "cycleTab" });
     if (input === "r") return refresh();
     if (input === "x") return dispatch({ t: "clearBanner" });
-    if (input === "t" && state.tab === "tokens") return dispatch({ t: "cycleSpan" });
+    if (input === "p") return providerLogin.open();
+
+    if (state.tab === "settings") {
+      if (key.upArrow || input === "k") return dispatch({ t: "settingsMove", delta: -1 });
+      if (key.downArrow || input === "j") return dispatch({ t: "settingsMove", delta: 1 });
+      if (key.return) {
+        if (state.settingsSel === 2) return dispatch({ t: "editStart" });
+        if (state.settingsSel === 3) {
+          notify("amana: test alert", "This is a test notification from amana settings");
+          return dispatch({ t: "setBanner", text: "test notification sent" });
+        }
+        return dispatch({ t: "settingsToggle" });
+      }
+      if (input === " " || key.leftArrow || key.rightArrow) return dispatch({ t: "settingsToggle" });
+      return;
+    }
+
+    // overview / provider detail
+    if (input === "t") return dispatch({ t: "cycleSpan" });
+    if (drilled) {
+      if (key.escape || key.leftArrow || key.backspace) dispatch({ t: "back" });
+      return;
+    }
     if (key.upArrow || input === "k") return dispatch({ t: "move", delta: -1, count });
     if (key.downArrow || input === "j") return dispatch({ t: "move", delta: 1, count });
     if (key.return || key.rightArrow || input === "l") {
-      if (!drilled && drillId) dispatch({ t: "drillIn", providerId: drillId });
+      if (selectedId) dispatch({ t: "drillIn", providerId: selectedId });
       return;
     }
-    if (key.escape) return drilled ? dispatch({ t: "back" }) : exit();
-    if (key.leftArrow || key.backspace) {
-      if (drilled) dispatch({ t: "back" });
-    }
+    if (key.escape) return exit();
   });
 
-  const activeTab = TAB_LABELS.findIndex((t) => t.tab === state.tab);
-  const footer = footerPairs(state.tab, drilled);
+  const activeTab = TABS.findIndex((t) => t.tab === state.tab);
 
   return (
-    <Box
-      flexDirection="column"
-      width={columns}
-      height={rows}
-      borderStyle="round"
-      borderColor="cyan"
-      paddingX={1}
-    >
+    <Box flexDirection="column" width={columns} height={rows} borderStyle="round" borderColor="cyan" paddingX={1}>
       <Box justifyContent="space-between">
         <Box>
-          <Text bold color="cyan">atop </Text>
-          <Tabs tabs={TAB_LABELS.map((t) => t.label)} active={activeTab} />
+          <Text bold color="cyan">amana </Text>
+          <Tabs tabs={TABS.map((t) => t.label)} active={activeTab} />
+          {drilled ? <Text dimColor> › {state.drillProvider}</Text> : null}
         </Box>
         {state.syncing ? <Text dimColor>syncing…</Text> : null}
       </Box>
-      {state.banner ? (
-        <Text color="red" bold>
-          {state.banner}
-        </Text>
-      ) : null}
+      {state.banner ? <Text color="red" bold>{state.banner}</Text> : null}
       <Box flexGrow={1} flexDirection="column" marginTop={1}>
-        {state.helpVisible ? <HelpOverlay visible /> : renderView(state, db, limitRows)}
+        {providerLogin.login ? (
+          <ProvidersView login={providerLogin.login} accounts={state.accounts} />
+        ) : state.helpVisible ? (
+          <HelpOverlay visible />
+        ) : (
+          renderView(state, db)
+        )}
       </Box>
-      <Footer pairs={footer} />
+      <Footer pairs={footerPairs(state, drilled)} />
     </Box>
   );
 }
 
-function renderView(state: TuiState, db: Database, limitRows: LimitRow[]): React.JSX.Element {
-  if (state.tab === "tokens") {
-    return state.drillProvider ? <TokensProviderView state={state} db={db} /> : <TokensView state={state} />;
-  }
-  if (state.tab === "limits") {
-    return state.drillProvider ? <LimitsProviderView state={state} /> : <LimitsView state={state} rows={limitRows} />;
-  }
-  return <AccountsView state={state} />;
+function renderView(state: TuiState, db: Database): React.JSX.Element {
+  if (state.tab === "settings") return <SettingsView state={state} />;
+  if (state.drillProvider !== null) return <ProviderView state={state} db={db} />;
+  if (state.tab === "overview") return <OverviewView state={state} />;
+  return <LimitsView state={state} />;
 }
 
-function footerPairs(tab: Tab, drilled: boolean): [string, string][] {
-  const base: [string, string][] = drilled
-    ? [["Esc/←", "back"], ["r", "refresh"], ["?", "help"], ["q", "quit"]]
-    : [["1/2/3", "tabs"], ["↑↓", "select"], ["Enter", "drill"], ["r", "refresh"], ["?", "help"], ["q", "quit"]];
-  if (tab === "tokens") base.splice(base.length - 2, 0, ["t", "span"]);
-  return base;
+function footerPairs(state: TuiState, drilled: boolean): [string, string][] {
+  if (state.tab === "settings") {
+    return [["1/2/3", "view"], ["↑↓", "move"], ["Space", "toggle"], ["Enter", "edit"], ["p", "providers"], ["?", "help"], ["q", "quit"]];
+  }
+  if (drilled) {
+    return [["Esc/←", "back"], ["t", "span"], ["r", "refresh"], ["?", "help"], ["q", "quit"]];
+  }
+  return [["1/2/3", "view"], ["↑↓", "select"], ["Enter", "open"], ["p", "providers"], ["t", "span"], ["r", "refresh"], ["q", "quit"]];
 }

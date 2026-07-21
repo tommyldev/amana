@@ -1,5 +1,5 @@
 /**
- * Compiles atop into a single self-contained binary at dist/atop.
+ * Compiles amana into a single self-contained binary at dist/amana.
  *
  * ink statically references `react-devtools-core` from its devtools module,
  * which is only ever loaded when `process.env.DEV === "true"`. We stub it at
@@ -8,11 +8,11 @@
  */
 import { rmSync } from "node:fs";
 
-rmSync("dist/atop", { force: true });
+rmSync("dist/amana", { force: true });
 
 const result = await Bun.build({
   entrypoints: ["src/index.ts"],
-  compile: { outfile: "dist/atop" },
+  compile: { outfile: "dist/amana" },
   plugins: [
     {
       name: "stub-react-devtools-core",
@@ -34,4 +34,4 @@ if (!result.success) {
   for (const log of result.logs) console.error(log);
   process.exit(1);
 }
-console.log("built dist/atop");
+console.log("built dist/amana");

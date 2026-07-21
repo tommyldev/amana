@@ -1,5 +1,5 @@
 /**
- * `atop report` — run an incremental sync, then render today's spend plus a
+ * `amana report` — run an incremental sync, then render today's spend plus a
  * per-provider window-status line. Port of `cli/mod.rs` Cmd::Report arm.
  */
 import { cliContext } from "./context.ts";

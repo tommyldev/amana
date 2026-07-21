@@ -1,7 +1,7 @@
 /**
  * Validate an admin (org-level) key by hitting the provider's cheapest
- * authenticated endpoint. Used by `atop login openai-api` /
- * `atop login anthropic-api`; on success the key is stored and the provider
+ * authenticated endpoint. Used by `amana login openai-api` /
+ * `amana login anthropic-api`; on success the key is stored and the provider
  * is enabled in config.
  *
  * Port of `legacy-rust/src/cli/validate.rs`: 15s timeout, exact endpoints,

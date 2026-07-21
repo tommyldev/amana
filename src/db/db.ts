@@ -28,6 +28,18 @@ CREATE TABLE IF NOT EXISTS alert_state(
   provider TEXT NOT NULL, account TEXT NOT NULL, limit_id TEXT NOT NULL,
   threshold INTEGER NOT NULL, epoch TEXT NOT NULL, fired_at_ms INTEGER NOT NULL,
   PRIMARY KEY(provider, account, limit_id, threshold, epoch));
+CREATE TABLE IF NOT EXISTS usage_snapshots(
+  id INTEGER PRIMARY KEY,
+  fetched_at_ms INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  account TEXT NOT NULL,
+  limit_id TEXT NOT NULL,
+  used REAL,
+  limit_amount REAL,
+  unit TEXT NOT NULL,
+  resets_at_ms INTEGER);
+CREATE INDEX IF NOT EXISTS idx_usage_snapshots_plt
+  ON usage_snapshots(provider, limit_id, fetched_at_ms);
 `;
 
 /**

@@ -11,6 +11,7 @@ import { loopbackCallback } from "./callback.ts";
 import { codexClaimsFromJwt } from "./jwt.ts";
 import { OAuthHttpError, postForm } from "./http.ts";
 import { pkce, randomState } from "./pkce.ts";
+import { cliUi, type LoginUi } from "./ui.ts";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
@@ -30,7 +31,7 @@ interface TokenResponse {
   id_token?: string;
 }
 
-export async function login(_provider?: string): Promise<Credential> {
+export async function login(_provider?: string, ui: LoginUi = cliUi()): Promise<Credential> {
   const { verifier, challenge } = pkce();
   const state = randomState();
   const params = new URLSearchParams({
@@ -43,7 +44,7 @@ export async function login(_provider?: string): Promise<Credential> {
     state,
   });
   const baseAuthUrl = `${AUTHORIZE_URL}?${params.toString()}`;
-  const { code: rawCode } = await loopbackCallback(CALLBACK_PORT, CALLBACK_PATH, state, baseAuthUrl);
+  const { code: rawCode } = await loopbackCallback(CALLBACK_PORT, CALLBACK_PATH, state, baseAuthUrl, ui);
   const code = rawCode.split("#")[0]!;
   const base = new URLSearchParams({
     grant_type: "authorization_code",

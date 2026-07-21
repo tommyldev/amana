@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { renderHourlyGraph } from "./graph.ts";
+import { heatColor, renderHourlyGraph } from "./graph.ts";
+import { dim, green, red, yellow } from "./ansi.ts";
 
 const START = Date.UTC(2026, 5, 27, 0, 0, 0); // 00:00 UTC
 
@@ -33,6 +34,15 @@ test("column count matches bucket count on the bar rows", () => {
   const barRow = out.split("\n")[0]!;
   const afterConnector = barRow.slice(barRow.indexOf("┤") + 1);
   expect(afterConnector.length).toBe(buckets.length);
+});
+
+test("heatColor ramps green → yellow → red by peak share, dim at zero", () => {
+  expect(heatColor(0)).toBe(dim);
+  expect(heatColor(0.2)).toBe(green);
+  expect(heatColor(0.45)).toBe(yellow);
+  expect(heatColor(0.79)).toBe(yellow);
+  expect(heatColor(0.8)).toBe(red);
+  expect(heatColor(1)).toBe(red);
 });
 
 function height(out: string): number {

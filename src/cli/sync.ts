@@ -1,5 +1,5 @@
 /**
- * `atop sync` — ingest every enabled provider's source now. `--full` resets
+ * `amana sync` — ingest every enabled provider's source now. `--full` resets
  * the byte offsets to 0 so JSONL files are re-read from the top. Port of
  * `cli/mod.rs` Cmd::Sync arm.
  */

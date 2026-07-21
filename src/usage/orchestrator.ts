@@ -14,6 +14,8 @@ import { refresh as anthropicRefresh } from "../auth/oauth/anthropic.ts";
 import { refresh as googleRefresh } from "../auth/oauth/google.ts";
 import { refresh as openaiCodexRefresh } from "../auth/oauth/openaiCodex.ts";
 import { refresh as minimaxRefresh } from "../auth/oauth/minimax.ts";
+import { refresh as kimiRefresh } from "../auth/oauth/kimi.ts";
+import { refresh as xaiRefresh } from "../auth/oauth/xai.ts";
 
 export interface FetchError {
   provider: string;
@@ -38,6 +40,10 @@ function refreshFor(provider: string): ((cred: Credential) => Promise<Credential
     case "minimax-code":
     case "minimax-code-cn":
       return minimaxRefresh;
+    case "kimi-code":
+      return kimiRefresh;
+    case "xai-oauth":
+      return xaiRefresh;
     default:
       return undefined;
   }

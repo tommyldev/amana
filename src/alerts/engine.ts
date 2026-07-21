@@ -107,7 +107,7 @@ export function checkAndFire(
     markAlertFired(db, key, now);
     if (alertsCfg.desktop) {
       notify(
-        `atop: ${ev.provider} ${Math.round(ev.usedPct)}% used`,
+        `amana: ${ev.provider} ${Math.round(ev.usedPct)}% used`,
         `${ev.account} · ${ev.limitLabel} · threshold ${ev.threshold}%`,
       );
     }

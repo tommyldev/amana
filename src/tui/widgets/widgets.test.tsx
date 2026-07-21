@@ -2,23 +2,23 @@ import { test, expect, describe } from "bun:test";
 import React from "react";
 import { render } from "ink-testing-library";
 import { LineGauge } from "./LineGauge.tsx";
-import { BarChart } from "./BarChart.tsx";
+import { UsageChart } from "./UsageChart.tsx";
 import { Table } from "./Table.tsx";
 import { Footer } from "./Footer.tsx";
 import { HelpOverlay } from "./HelpOverlay.tsx";
 import { Tabs } from "./Tabs.tsx";
 
 describe("LineGauge", () => {
-  test("renders value=95 with 95% text and red-band color", () => {
-    const { lastFrame } = render(<LineGauge value={95} />);
-    const frame = lastFrame();
-    expect(frame).toContain("95%");
+  test("renders value=100 with 100% text, a fill glyph and no brackets", () => {
+    const frame = render(<LineGauge value={100} />).lastFrame();
+    expect(frame).toContain("100%");
     expect(frame).toContain("█");
-    // gaugeColor(95) returns "red"; ink colorizes the bracket section.
-    // We cannot directly read ANSI escapes via lastFrame; assert the
-    // substring containing the filled-cells exists.
-    expect(frame).toContain("[");
-    expect(frame).toContain("]");
+    expect(frame).not.toContain("[");
+  });
+
+  test("renders a status dot when dot is set", () => {
+    expect(render(<LineGauge value={50} dot />).lastFrame()).toContain("●");
+    expect(render(<LineGauge value={50} />).lastFrame()).not.toContain("●");
   });
 
   test("renders custom label", () => {
@@ -28,45 +28,39 @@ describe("LineGauge", () => {
   });
 
   test("clamps negative and oversize values", () => {
-    const { lastFrame: lfNeg } = render(<LineGauge value={-10} />);
-    expect(lfNeg()).toContain("0%");
-    const { lastFrame: lfBig } = render(<LineGauge value={250} />);
-    expect(lfBig()).toContain("100%");
+    expect(render(<LineGauge value={-10} />).lastFrame()).toContain("0%");
+    expect(render(<LineGauge value={250} />).lastFrame()).toContain("100%");
   });
 
-  test("uses yellow band at 70 and green band below", () => {
-    expect(render(<LineGauge value={70} />).lastFrame()).toContain("70%");
-    expect(render(<LineGauge value={30} />).lastFrame()).toContain("30%");
+  test("fills the track proportionally to the value", () => {
+    // width defaults to 20 → value 25 fills 5 cells, leaving 15 empty.
+    const frame = render(<LineGauge value={25} />).lastFrame() ?? "";
+    expect(frame).toContain("█".repeat(5));
+    expect(frame).toContain("░".repeat(15));
+    expect(frame).toContain("25%");
   });
 });
 
-describe("BarChart", () => {
-  test("renders 24 buckets with glyphs and hour labels", () => {
+describe("UsageChart", () => {
+  test("renders multi-row bars, y-axis peak label and hour labels", () => {
     const data = Array.from({ length: 24 }, (_, i) => i * 10);
-    const startMs = Date.UTC(2026, 6, 16, 0, 0, 0); // 2026-07-16T00:00Z
-    const { lastFrame } = render(
-      <BarChart data={data} startMs={startMs} labelEvery={3} />,
-    );
-    const frame = lastFrame();
-    expect(frame).toContain("▇");
-    expect(frame).toContain("00");
+    const startMs = Date.UTC(2026, 6, 16, 0, 0, 0);
+    const frame = render(<UsageChart data={data} startMs={startMs} labelEvery={3} />).lastFrame() ?? "";
+    expect(frame).toContain("█"); // tallest column reaches the top row
+    expect(frame).toContain("┼"); // baseline connector
+    expect(frame).toContain("└"); // x-axis
+    expect(frame).toContain("00"); // first hour label
     expect(frame).toContain("03");
-    expect(frame).toContain("06");
   });
 
-  test("handles all-zero data without throwing", () => {
-    const data = Array(24).fill(0);
-    const { lastFrame } = render(<BarChart data={data} />);
-    expect(lastFrame()).toBeDefined();
+  test("empty data renders a placeholder, not a crash", () => {
+    expect(render(<UsageChart data={[]} />).lastFrame()).toContain("no activity");
   });
 
-  test("uses default cyan color in output", () => {
-    const { lastFrame } = render(<BarChart data={[1, 2, 3, 4]} />);
-    // Default color is cyan; we can only assert the frame rendered (ink
-    // applies ANSI escapes that lastFrame unwraps in some versions). Just
-    // assert the bar glyphs render.
-    const frame = lastFrame() ?? "";
-    expect(frame.length).toBeGreaterThan(0);
+  test("all-zero data still draws axes without bar glyphs", () => {
+    const frame = render(<UsageChart data={Array(6).fill(0)} startMs={0} />).lastFrame() ?? "";
+    expect(frame).toContain("┼");
+    expect(frame).not.toContain("█");
   });
 });
 

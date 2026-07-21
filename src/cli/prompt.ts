@@ -9,45 +9,6 @@ export async function promptText(question: string, allowEmpty = false): Promise<
   }
 }
 
-/** Prompt for a secret without echoing keystrokes to the terminal. */
-export async function promptPassword(question: string): Promise<string> {
-  stdout.write(`${question}: `);
-  const isTty = stdin.isTTY === true;
-  if (!isTty) {
-    const value = await ask("");
-    return value.trim();
-  }
-  stdin.setRawMode(true);
-  stdin.resume();
-  let buf = "";
-  return await new Promise<string>((resolve) => {
-    const onData = (chunk: Buffer) => {
-      const s = chunk.toString("utf8");
-      for (const ch of s) {
-        if (ch === "\r" || ch === "\n") {
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.off("data", onData);
-          stdout.write("\n");
-          resolve(buf);
-          return;
-        }
-        if (ch === "\u0003") {
-          stdin.setRawMode(false);
-          stdout.write("\n");
-          process.exit(130);
-        }
-        if (ch === "\u007f" || ch === "\b") {
-          buf = buf.slice(0, -1);
-        } else {
-          buf += ch;
-        }
-      }
-    };
-    stdin.on("data", onData);
-  });
-}
-
 /** Present a numbered list and return the selected index, or throw on cancel. */
 export async function promptSelect(question: string, items: string[]): Promise<number> {
   if (items.length === 0) throw new Error("nothing to select");

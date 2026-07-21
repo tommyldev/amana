@@ -76,6 +76,21 @@ export function statusOf(usedFraction: number | undefined): UsageStatus {
   return "ok";
 }
 
+/**
+ * The used fraction (0..1) of a limit, clamped. Prefers `usedFraction`, then
+ * `used/limit`, then `1 - remainingFraction`. `undefined` when nothing usable
+ * is present. Shared by the CLI breakdown and TUI gauges so the bar, color,
+ * and status all read from one source of truth.
+ */
+export function resolveUsedFraction(l: UsageLimit): number | undefined {
+  const a = l.amount;
+  const clamp = (n: number): number => Math.min(Math.max(n, 0), 1);
+  if (a.usedFraction !== undefined) return clamp(a.usedFraction);
+  if (a.used !== undefined && a.limit !== undefined && a.limit > 0) return clamp(a.used / a.limit);
+  if (a.remainingFraction !== undefined) return clamp(1 - a.remainingFraction);
+  return undefined;
+}
+
 /** Provider ids atop can fetch live usage for (the 12 fetchers). Shared by
  * `usage/fetcher.ts::supported()` and `auth/store.ts::allProviders()`. */
 export const SUPPORTED_PROVIDERS: string[] = [

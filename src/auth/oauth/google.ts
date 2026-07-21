@@ -4,7 +4,7 @@
  * optional project_id prompt, and refresh that preserves the prior
  * email/project_id/enterprise_url.
  */
-import { createInterface } from "node:readline";
+import { cliUi, type LoginUi } from "./ui.ts";
 import type { Credential } from "../types.ts";
 import { loopbackCallback } from "./callback.ts";
 import { postJsonRaw } from "./http.ts";
@@ -33,7 +33,7 @@ interface TokenResponse {
   expires_in: number;
 }
 
-export async function login(provider?: string): Promise<OAuthCred> {
+export async function login(provider?: string, ui: LoginUi = cliUi()): Promise<OAuthCred> {
   const { verifier, challenge } = pkce();
   const state = randomState();
   const url =
@@ -47,6 +47,7 @@ export async function login(provider?: string): Promise<OAuthCred> {
     CALLBACK_PATH,
     state,
     url,
+    ui,
   );
   const text = await postJsonRaw(TOKEN_URL, {
     grant_type: "authorization_code",
@@ -64,11 +65,13 @@ export async function login(provider?: string): Promise<OAuthCred> {
     (provider === "google-antigravity" || provider === "google-gemini-cli") &&
     !cred.project_id
   ) {
-    const project = await promptProject(
-      provider === "google-antigravity"
-        ? "Antigravity project id (blank to skip): "
-        : "Gemini CLI project id (blank to skip): ",
-    );
+    const project = ui.promptText
+      ? await ui.promptText(
+          provider === "google-antigravity"
+            ? "Antigravity project id (blank to skip): "
+            : "Gemini CLI project id (blank to skip): ",
+        )
+      : "";
     const trimmed = project.trim();
     if (trimmed) cred.project_id = trimmed;
   }
@@ -114,15 +117,4 @@ async function fetchEmail(accessToken: string): Promise<string | undefined> {
   if (!resp.ok) return undefined;
   const body = (await resp.json()) as { email?: string };
   return body.email && body.email.length > 0 ? body.email : undefined;
-}
-
-function promptProject(message: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  process.stderr.write(message);
-  const { promise, resolve } = Promise.withResolvers<string>();
-  rl.once("line", (line) => {
-    rl.close();
-    resolve(line);
-  });
-  return promise;
 }

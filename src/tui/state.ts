@@ -1,16 +1,20 @@
 /**
- * Pure reducer + initialState for the TUI. No side effects, no I/O — just a
- * `useReducer`-friendly function. The data loop in `useRefresh.ts` dispatches
- * `setData` after each refresh; `App.tsx` dispatches everything else in
- * response to keys.
- *
- * Spec: local://tui.md (State section).
+ * Pure reducer + initialState for the TUI. No side effects, no I/O. The data
+ * loop in `useRefresh.ts` dispatches `setData`; `App.tsx` dispatches key
+ * actions. Three views: Overview (all providers + aggregate chart), a Provider
+ * drill-in, and Settings (editable alerts).
  */
+import type { AlertsCfg } from "../config/types.ts";
 import type { UsageReport } from "../usage/types.ts";
 import type { FetchError } from "../usage/orchestrator.ts";
 import type { ProviderHourly } from "../db/types.ts";
+import type { OverviewRow } from "./views/derive.ts";
+import type { LimitRow } from "./views/limitRows.ts";
 
-export type Tab = "limits" | "tokens" | "accounts";
+export type Tab = "limits" | "overview" | "settings";
+
+/** Settings rows, in display order. 0/1 toggle, 2 edits, 3 is an action. */
+export const SETTINGS_FIELDS = ["enabled", "desktop", "thresholds", "test"] as const;
 
 export interface AccountRow {
   provider: string;
@@ -24,6 +28,8 @@ export interface TuiState {
   tab: Tab;
   drillProvider: string | null;
   selection: number;
+  overviewRows: OverviewRow[];
+  limitRows: LimitRow[];
   reports: UsageReport[];
   errors: FetchError[];
   tokenSeries: ProviderHourly[];
@@ -34,6 +40,10 @@ export interface TuiState {
   syncing: boolean;
   helpVisible: boolean;
   span: number;
+  settings: { enabled: boolean; desktop: boolean; thresholds: number[] };
+  settingsSel: number;
+  editing: boolean;
+  editBuffer: string;
 }
 
 export type Action =
@@ -44,6 +54,8 @@ export type Action =
   | { t: "back" }
   | {
       t: "setData";
+      overviewRows: OverviewRow[];
+      limitRows: LimitRow[];
       reports: UsageReport[];
       errors: FetchError[];
       tokenSeries: ProviderHourly[];
@@ -54,16 +66,24 @@ export type Action =
   | { t: "setBanner"; text: string }
   | { t: "clearBanner" }
   | { t: "toggleHelp" }
-  | { t: "cycleSpan" };
+  | { t: "cycleSpan" }
+  | { t: "settingsMove"; delta: number }
+  | { t: "settingsToggle" }
+  | { t: "editStart" }
+  | { t: "editChar"; ch: string }
+  | { t: "editBackspace" }
+  | { t: "editCommit" }
+  | { t: "editCancel" };
 
-const TAB_ORDER: Tab[] = ["limits", "tokens", "accounts"];
 const SPAN_CYCLE: number[] = [12, 24, 48];
 
-export function initialState(): TuiState {
+export function initialState(alerts: AlertsCfg): TuiState {
   return {
-    tab: "tokens",
+    tab: "limits",
     drillProvider: null,
     selection: 0,
+    overviewRows: [],
+    limitRows: [],
     reports: [],
     errors: [],
     tokenSeries: [],
@@ -74,46 +94,55 @@ export function initialState(): TuiState {
     syncing: false,
     helpVisible: false,
     span: 24,
+    settings: { enabled: alerts.enabled, desktop: alerts.desktop, thresholds: [...alerts.thresholds] },
+    settingsSel: 0,
+    editing: false,
+    editBuffer: "",
   };
+}
+
+/** Parse a CSV of ints in 1..100, deduped and sorted; empty → keep previous. */
+function parseThresholds(buffer: string, previous: number[]): number[] {
+  const parsed: number[] = [];
+  for (const part of buffer.split(",")) {
+    const n = Number.parseInt(part.trim(), 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 100) parsed.push(n);
+  }
+  if (parsed.length === 0) return previous;
+  return [...new Set(parsed)].sort((a, b) => a - b);
 }
 
 export function reducer(s: TuiState, a: Action): TuiState {
   switch (a.t) {
     case "setTab":
-      if (s.tab === a.tab) return s;
-      return { ...s, tab: a.tab, drillProvider: null, selection: 0 };
+      if (s.tab === a.tab && s.drillProvider === null) return s;
+      return { ...s, tab: a.tab, drillProvider: null, selection: 0, editing: false };
 
     case "cycleTab": {
-      const idx = TAB_ORDER.indexOf(s.tab);
-      const next = TAB_ORDER[(idx + 1) % TAB_ORDER.length]!;
-      return { ...s, tab: next, drillProvider: null, selection: 0 };
+      const order: Tab[] = ["limits", "overview", "settings"];
+      const next = order[(order.indexOf(s.tab) + 1) % order.length]!;
+      return { ...s, tab: next, drillProvider: null, selection: 0, editing: false };
     }
 
     case "move": {
       if (a.count <= 0) return { ...s, selection: 0 };
-      // Wrap within [0, count). Pure JS `%` already matches the sign of the
-      // dividend, so this handles negative deltas correctly.
       const raw = s.selection + a.delta;
-      const wrapped = ((raw % a.count) + a.count) % a.count;
-      return { ...s, selection: wrapped };
+      return { ...s, selection: ((raw % a.count) + a.count) % a.count };
     }
 
     case "drillIn":
       if (s.drillProvider === a.providerId) return s;
-      return { ...s, drillProvider: a.providerId, selection: 0 };
+      return { ...s, drillProvider: a.providerId };
 
     case "back":
-      if (s.drillProvider !== null) {
-        return { ...s, drillProvider: null, selection: 0 };
-      }
-      // Top-level back is the App's quit signal — flag it via the same state
-      // shape by clearing nothing; the App's useInput handler treats Esc at
-      // top level as exit. Return s unchanged.
+      if (s.drillProvider !== null) return { ...s, drillProvider: null };
       return s;
 
     case "setData":
       return {
         ...s,
+        overviewRows: a.overviewRows,
+        limitRows: a.limitRows,
         reports: a.reports,
         errors: a.errors,
         tokenSeries: a.tokenSeries,
@@ -122,23 +151,52 @@ export function reducer(s: TuiState, a: Action): TuiState {
       };
 
     case "setSyncing":
-      if (s.syncing === a.on) return s;
-      return { ...s, syncing: a.on };
+      return s.syncing === a.on ? s : { ...s, syncing: a.on };
 
     case "setBanner":
       return { ...s, banner: a.text, bannerAt: Date.now() };
 
     case "clearBanner":
-      if (s.banner === null && s.bannerAt === null) return s;
-      return { ...s, banner: null, bannerAt: null };
+      return s.banner === null && s.bannerAt === null ? s : { ...s, banner: null, bannerAt: null };
 
     case "toggleHelp":
       return { ...s, helpVisible: !s.helpVisible };
 
     case "cycleSpan": {
       const idx = SPAN_CYCLE.indexOf(s.span);
-      const next = SPAN_CYCLE[(idx + 1) % SPAN_CYCLE.length]!;
-      return { ...s, span: next };
+      return { ...s, span: SPAN_CYCLE[(idx + 1) % SPAN_CYCLE.length]! };
     }
+
+    case "settingsMove": {
+      const raw = s.settingsSel + a.delta;
+      const wrapped = ((raw % SETTINGS_FIELDS.length) + SETTINGS_FIELDS.length) % SETTINGS_FIELDS.length;
+      return { ...s, settingsSel: wrapped, editing: false };
+    }
+
+    case "settingsToggle": {
+      if (s.settingsSel === 0) return { ...s, settings: { ...s.settings, enabled: !s.settings.enabled } };
+      if (s.settingsSel === 1) return { ...s, settings: { ...s.settings, desktop: !s.settings.desktop } };
+      return s;
+    }
+
+    case "editStart":
+      if (s.settingsSel !== 2) return s;
+      return { ...s, editing: true, editBuffer: s.settings.thresholds.join(",") };
+
+    case "editChar":
+      if (!s.editing || !/^[0-9,]$/.test(a.ch)) return s;
+      return { ...s, editBuffer: s.editBuffer + a.ch };
+
+    case "editBackspace":
+      return s.editing ? { ...s, editBuffer: s.editBuffer.slice(0, -1) } : s;
+
+    case "editCommit": {
+      if (!s.editing) return s;
+      const thresholds = parseThresholds(s.editBuffer, s.settings.thresholds);
+      return { ...s, editing: false, editBuffer: "", settings: { ...s.settings, thresholds } };
+    }
+
+    case "editCancel":
+      return s.editing ? { ...s, editing: false, editBuffer: "" } : s;
   }
 }

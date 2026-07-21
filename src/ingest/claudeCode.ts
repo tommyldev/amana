@@ -56,7 +56,7 @@ export function parseClaudeCodeLine(line: string): UsageEventRow | null {
   const total = prompt + completion + cacheRead + cacheWrite;
   const promptU = prompt > 0 ? prompt : 0;
   const completionU = completion > 0 ? completion : 0;
-  const computedCost = cost(model, promptU, completionU);
+  const computedCost = cost(model, promptU, completionU, cacheRead, cacheWrite);
   let ts = Date.now();
   if (typeof entry.timestamp === "string") {
     if (/^-?\d+$/.test(entry.timestamp)) ts = Number(entry.timestamp);

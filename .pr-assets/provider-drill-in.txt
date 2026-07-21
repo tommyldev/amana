@@ -1,0 +1,35 @@
+=== LOCAL DRILL-IN (no configured limit → usage-only) ===
+Claude Code logs · last 24h · 4.2k tok
+
+  usage · rolling 5h        4.2k tok · resets in 3h 24m
+  usage · weekly mon        4.2k tok · resets in 24h 24m
+
+4.2k ┤                       █
+     ┤                       █
+     ┤                       █
+     ┤                       █
+     ┤                       █
+   0 ┼                       █
+     └────────────────────────
+      00 03 06 09 12 15 18 21
+
+model                            reqs    tokens     est $
+  sonnet                              1      4.2k     $0.42
+
+=== LOCAL DRILL-IN (token cap set → gauge) ===
+Claude Code logs · last 24h · 4.2k tok
+
+  token budget · rolling 5h ● ████████░░░░░░░░░░░░ 42%  4.2k / 10.0k tok · resets in 3h 24m
+  usage · weekly mon        4.2k tok · resets in 24h 24m
+
+4.2k ┤                       █
+     ┤                       █
+     ┤                       █
+     ┤                       █
+     ┤                       █
+   0 ┼                       █
+     └────────────────────────
+      00 03 06 09 12 15 18 21
+
+model                            reqs    tokens     est $
+  sonnet                              1      4.2k     $0.42

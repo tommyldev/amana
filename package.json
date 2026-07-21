@@ -1,10 +1,19 @@
 {
-  "name": "atop",
+  "name": "amana",
   "version": "0.1.0",
+  "description": "Agent Token Observer & Monitor — a single-binary Bun CLI + TUI that tracks AI token/cost usage across ~40 providers.",
+  "keywords": ["cli","tui","bun","ai","llm","tokens","usage","cost","monitoring","anthropic","openai"],
+  "license": "(MIT OR Apache-2.0)",
+  "homepage": "https://github.com/tommyldev/atop#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/tommyldev/atop.git" },
+  "bugs": { "url": "https://github.com/tommyldev/atop/issues" },
+  "author": "tommyldev",
   "type": "module",
   "bin": {
-    "atop": "src/index.ts"
+    "amana": "src/index.ts"
   },
+  "engines": { "bun": ">=1.1.0" },
+  "files": ["src", "README.md", "LICENSE-MIT", "LICENSE-APACHE"],
   "scripts": {
     "start": "bun src/index.ts",
     "test": "bun test",

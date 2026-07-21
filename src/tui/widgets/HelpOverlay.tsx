@@ -6,14 +6,18 @@ export interface HelpOverlayProps {
 }
 
 const ROWS: [string, string][] = [
-  ["1/2/3", "jump tab"],
-  ["Tab", "cycle tab"],
-  ["↑↓/jk", "select"],
-  ["Enter/→/l", "drill in"],
-  ["Esc/←/BS", "back"],
+  ["1", "Limits"],
+  ["2", "Overview"],
+  ["3", "Settings"],
+  ["Tab", "cycle view"],
+  ["↑↓/jk", "select / move"],
+  ["Enter/→", "open provider"],
+  ["Esc/←", "back"],
+  ["Space", "toggle setting"],
+  ["t", "cycle chart span"],
   ["r", "force refresh"],
-  ["t", "cycle span (tokens)"],
   ["x", "dismiss banner"],
+  ["p", "providers / login"],
   ["?/h", "toggle help"],
   ["q / ^C", "quit"],
 ];

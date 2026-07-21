@@ -15,7 +15,7 @@ function rolling(d: string): WindowCfg {
 /**
  * One ProviderCfg per known provider, with window(s) derived from each
  * provider's reset cadence. Only the raw log aggregates (omp, claude-code)
- * are enabled by default; everything else is opted in via `atop login`.
+ * are enabled by default; everything else is opted in via `amana login`.
  */
 export function defaultProviders(): ProviderCfg[] {
   return KNOWN_PROVIDERS.map((def) => {

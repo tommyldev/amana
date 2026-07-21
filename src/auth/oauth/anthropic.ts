@@ -8,6 +8,7 @@ import type { Credential } from "../types.ts";
 import { loopbackCallback } from "./callback.ts";
 import { postJsonRaw } from "./http.ts";
 import { percentEncode, pkce, randomState } from "./pkce.ts";
+import { cliUi, type LoginUi } from "./ui.ts";
 
 type OAuthCred = Extract<Credential, { type: "oauth" }>;
 
@@ -27,7 +28,7 @@ interface TokenResponse {
   account?: { uuid?: string; email_address?: string };
 }
 
-export async function login(_provider?: string): Promise<OAuthCred> {
+export async function login(_provider?: string, ui: LoginUi = cliUi()): Promise<OAuthCred> {
   const { verifier, challenge } = pkce();
   const state = randomState();
   const url =
@@ -40,6 +41,7 @@ export async function login(_provider?: string): Promise<OAuthCred> {
     CALLBACK_PATH,
     state,
     url,
+    ui,
   );
   const hashSplit = rawCode.split("#");
   const code = hashSplit[0]!;

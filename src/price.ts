@@ -10,6 +10,7 @@ interface PriceEntry {
  */
 const PRICES: PriceEntry[] = [
   { pattern: "claude-3-5-sonnet", pinPerMtok: 3.0, poutPerMtok: 15.0 },
+  { pattern: "claude-3-7-sonnet", pinPerMtok: 3.0, poutPerMtok: 15.0 },
   { pattern: "claude-sonnet-4", pinPerMtok: 3.0, poutPerMtok: 15.0 },
   { pattern: "claude-opus-4", pinPerMtok: 15.0, poutPerMtok: 75.0 },
   { pattern: "claude-3-opus", pinPerMtok: 15.0, poutPerMtok: 75.0 },
@@ -24,12 +25,35 @@ const PRICES: PriceEntry[] = [
   { pattern: "o3-mini", pinPerMtok: 1.1, poutPerMtok: 4.4 },
 ];
 
-/** Estimated cost in USD for a model given prompt/completion token counts,
- * or undefined when the model matches no known price pattern. */
-export function cost(model: string, prompt: number, completion: number): number | undefined {
+/**
+ * Anthropic prompt-cache pricing relative to the base input rate: cache reads
+ * bill at 0.1×, 5-minute cache writes at 1.25×. The only computed-cost path is
+ * Claude Code (always Claude models), so these multipliers apply where correct.
+ */
+const CACHE_READ_MULT = 0.1;
+const CACHE_WRITE_MULT = 1.25;
+
+/**
+ * Estimated cost in USD for a model given prompt/completion (and optional
+ * prompt-cache read/write) token counts, or undefined when the model matches
+ * no known price pattern. Cache params default to 0 so 3-arg callers are
+ * unaffected.
+ */
+export function cost(
+  model: string,
+  prompt: number,
+  completion: number,
+  cacheRead = 0,
+  cacheWrite = 0,
+): number | undefined {
   for (const e of PRICES) {
     if (model.includes(e.pattern)) {
-      return (prompt / 1_000_000) * e.pinPerMtok + (completion / 1_000_000) * e.poutPerMtok;
+      return (
+        (prompt / 1_000_000) * e.pinPerMtok +
+        (completion / 1_000_000) * e.poutPerMtok +
+        (cacheRead / 1_000_000) * e.pinPerMtok * CACHE_READ_MULT +
+        (cacheWrite / 1_000_000) * e.pinPerMtok * CACHE_WRITE_MULT
+      );
     }
   }
   return undefined;

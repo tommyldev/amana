@@ -1,10 +1,25 @@
 import { KNOWN_PROVIDERS } from "../registry.ts";
+import type { UsageStatus } from "../usage/types.ts";
+import { type HeatLevel, heatLevel } from "../report/graph.ts";
 
-/** Color band for usage gauges: <70 green, 70..90 yellow, >=90 red. */
-export function gaugeColor(pct: number): string {
-  if (pct >= 90) return "red";
-  if (pct >= 70) return "yellow";
-  return "green";
+/** Ink color name per usage status, mirroring the CLI breakdown palette. */
+export const statusColor: Record<UsageStatus, string> = {
+  exhausted: "red",
+  warning: "yellow",
+  ok: "green",
+  unknown: "gray",
+};
+
+/** Ink color name per heat band, matching the CLI graph's ANSI ramp. */
+const HEAT_INK: Record<HeatLevel, string> = {
+  hot: "red",
+  busy: "yellow",
+  calm: "green",
+  idle: "gray",
+};
+
+export function heatInk(ratio: number): string {
+  return HEAT_INK[heatLevel(ratio)];
 }
 
 /**

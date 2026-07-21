@@ -1,0 +1,9 @@
+alerts
+fires when any limit — live quota or a configured cap — crosses a threshold · saved to config.toml
+
+› Alerts enabled          ● on
+  Desktop notifications   ● on
+  Alert thresholds (%)    75, 90, 100
+  Send test notification  press Enter
+
+↑↓ move · Space toggle · Enter edit/run

@@ -8,7 +8,7 @@
  * id) can pick the right endpoint.
  */
 import type { Credential } from "../types.ts";
-import { openBrowser } from "./callback.ts";
+import { cliUi, type LoginUi } from "./ui.ts";
 import { OAuthHttpError, postJson } from "./http.ts";
 import { pkce, randomState } from "./pkce.ts";
 
@@ -22,7 +22,7 @@ const HOSTS: Record<"minimax-code" | "minimax-code-cn", string> = {
   "minimax-code-cn": "https://account.minimaxi.com",
 };
 
-export async function login(provider?: string): Promise<Credential> {
+export async function login(provider?: string, ui: LoginUi = cliUi()): Promise<Credential> {
   const host = provider === "minimax-code-cn" ? HOSTS["minimax-code-cn"] : HOSTS["minimax-code"];
   const { verifier, challenge } = pkce();
   const state = randomState();
@@ -35,9 +35,7 @@ export async function login(provider?: string): Promise<Credential> {
     state,
   })) as DeviceCodeResponse;
 
-  console.log(`Authorize atop by visiting:\n  ${device.verification_uri}\n`);
-  console.log(`Enter code: ${device.user_code}\n`);
-  openBrowser(device.verification_uri);
+  ui.prompt({ url: device.verification_uri, userCode: device.user_code });
 
   const interval = (device.interval ?? 5) * 1000;
   const expiresAtMs = Date.now() + device.expires_in * 1000;
@@ -60,7 +58,7 @@ export async function login(provider?: string): Promise<Credential> {
         await sleep(5000);
         continue;
       }
-      if (code === "expired_token") throw new Error("device flow expired; restart atop login");
+      if (code === "expired_token") throw new Error("device flow expired; restart amana login");
       throw err;
     }
   }
@@ -81,7 +79,7 @@ export async function refresh(cred: Credential): Promise<Credential> {
     return tokenToCred(token, host, cred);
   } catch (err) {
     if (err instanceof OAuthHttpError && err.status === 400) {
-      throw new Error(`re-run: atop login ${hostToProvider(host)}`);
+      throw new Error(`re-run: amana login ${hostToProvider(host)}`);
     }
     throw err;
   }

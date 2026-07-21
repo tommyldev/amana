@@ -7,8 +7,8 @@
  * Port of `auth/oauth/callback.rs`.
  */
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
-import { parseCallbackInput, parseQuery } from "./pkce.ts";
+import { parseQuery } from "./pkce.ts";
+import type { LoginUi } from "./ui.ts";
 
 export interface CallbackResult {
   code: string;
@@ -16,44 +16,69 @@ export interface CallbackResult {
 }
 
 const SUCCESS_HTML =
-  "<!doctype html><meta charset=utf-8><title>atop</title>" +
+  "<!doctype html><meta charset=utf-8><title>amana</title>" +
   "<body style=\"font:14px system-ui;padding:2rem\">" +
-  "<h2>atop: authentication complete</h2>" +
+  "<h2>amana: authentication complete</h2>" +
   "<p>You can close this tab and return to the terminal.</p></body>";
 
 const FAILURE_HTML =
-  "<!doctype html><meta charset=utf-8><title>atop</title>" +
+  "<!doctype html><meta charset=utf-8><title>amana</title>" +
   "<body style=\"font:14px system-ui;padding:2rem\">" +
-  "<h2>atop: authentication failed</h2>" +
+  "<h2>amana: authentication failed</h2>" +
   "<p>Check the terminal for details.</p></body>";
-
-class PortBusyError extends Error {
-  constructor() {
-    super("loopback port busy");
-  }
-}
 
 interface LoopbackServer {
   stop(close?: boolean): void;
 }
 
+const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
+
 /**
- * Run the full redirect leg: open browser, listen on the loopback, validate
- * `state`, return `(code, state)`. On port-in-use, prompt via stdin.
+ * Run the redirect leg: open the browser, listen on the loopback (both IPv4 and
+ * IPv6 families), AND concurrently accept a pasted authorization code / redirect
+ * URL from the terminal — whichever arrives first wins. The paste path is not
+ * just a port-busy fallback: some providers (e.g. Anthropic's `code=true` flow)
+ * display the code on a page instead of redirecting to the loopback, so the user
+ * must paste it. Rejects after a 5-minute timeout instead of hanging.
  */
 export async function loopbackCallback(
   port: number,
   path: string,
   expectedState: string,
   authUrl: string,
+  ui: LoginUi,
 ): Promise<CallbackResult> {
-  openBrowser(authUrl);
-  console.log(`Opening your browser to authorize atop. If it doesn't open, visit:\n  ${authUrl}\n`);
+  const { promise, resolve, reject } = Promise.withResolvers<CallbackResult>();
+  const servers = startLoopback(port, path, expectedState, resolve, reject);
+  ui.prompt({ url: authUrl, needsPaste: true });
+
+  // Race the loopback redirect against a pasted code/url. The AbortSignal lets
+  // us tear down the losing paste path (close its readline / clear the TUI
+  // field) once a winner emerges. A paste rejection (e.g. user cancel) rejects
+  // the whole login; resolve/reject are no-ops once settled.
+  const ac = new AbortController();
+  void ui.paste(ac.signal).then(
+    (r) => {
+      if (expectedState && r.state && r.state !== expectedState) {
+        reject(new Error("state mismatch (possible CSRF)"));
+        return;
+      }
+      resolve({ code: r.code, state: r.state ?? "" });
+    },
+    (err: unknown) => reject(err instanceof Error ? err : new Error(String(err))),
+  );
+
+  const timer = setTimeout(() => {
+    reject(new Error("timed out waiting for authorization (5 min) — try again"));
+    ac.abort();
+  }, CALLBACK_TIMEOUT_MS);
+
   try {
-    return await listenLoopback(port, path, expectedState);
-  } catch (err) {
-    if (!(err instanceof PortBusyError)) throw err;
-    return pasteFallback(expectedState);
+    return await promise;
+  } finally {
+    clearTimeout(timer);
+    ac.abort();
+    for (const s of servers) s.stop();
   }
 }
 
@@ -61,57 +86,55 @@ export async function loopbackCallback(
 export function openBrowser(url: string): void {
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   try {
-    const child = spawn(cmd, [url], {
-      stdio: "ignore",
-      detached: true,
-    });
+    const child = spawn(cmd, [url], { stdio: "ignore", detached: true });
     child.unref();
   } catch {
     // swallow — we'll still print the URL
   }
 }
 
-async function listenLoopback(
+/**
+ * Bind the loopback callback on both IPv4 (`127.0.0.1`) and IPv6 (`::1`) so the
+ * redirect reaches us regardless of how `localhost` resolves. Returns the bound
+ * servers (empty when the port is unavailable on both families — the caller then
+ * relies on the concurrent paste path).
+ */
+function startLoopback(
   port: number,
   path: string,
   expectedState: string,
-): Promise<CallbackResult> {
-  const { promise: done, resolve: resolveCallback, reject: rejectCallback } =
-    Promise.withResolvers<CallbackResult>();
-  let server: LoopbackServer | null = null;
-  try {
-    server = Bun.serve({
-      port,
-      hostname: "127.0.0.1",
-      fetch(req): Response {
-        try {
-          const url = new URL(req.url);
-          if (url.pathname !== path) return new Response("not found", { status: 404 });
-          const params = parseQuery(url.search.replace(/^\?/, ""));
-          const result = interpret(params, expectedState);
-          if (result.ok) resolveCallback(result.value);
-          else rejectCallback(result.error);
-          return new Response(result.ok ? SUCCESS_HTML : FAILURE_HTML, {
-            status: result.ok ? 200 : 400,
-            headers: { "content-type": "text/html; charset=utf-8" },
-          });
-        } catch (e) {
-          rejectCallback(e as Error);
-          return new Response(FAILURE_HTML, {
-            status: 500,
-            headers: { "content-type": "text/html; charset=utf-8" },
-          });
-        }
-      },
-    });
-  } catch {
-    throw new PortBusyError();
+  resolve: (r: CallbackResult) => void,
+  reject: (e: Error) => void,
+): LoopbackServer[] {
+  const handler = (req: Request): Response => {
+    try {
+      const url = new URL(req.url);
+      if (url.pathname !== path) return new Response("not found", { status: 404 });
+      const result = interpret(parseQuery(url.search.replace(/^\?/, "")), expectedState);
+      // Defer signalling completion until AFTER this Response is handed back to
+      // Bun, so the browser receives the success/failure page before the server
+      // is torn down (a synchronous resolve + graceful stop can still race the
+      // socket flush).
+      if (result.ok) queueMicrotask(() => resolve(result.value));
+      else queueMicrotask(() => reject(result.error));
+      return new Response(result.ok ? SUCCESS_HTML : FAILURE_HTML, {
+        status: result.ok ? 200 : 400,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    } catch (e) {
+      reject(e as Error);
+      return new Response(FAILURE_HTML, { status: 500, headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+  };
+  const servers: LoopbackServer[] = [];
+  for (const hostname of ["127.0.0.1", "::1"]) {
+    try {
+      servers.push(Bun.serve({ port, hostname, fetch: handler }));
+    } catch {
+      // Family unavailable (no IPv6) or already bound — fine if the other binds.
+    }
   }
-  try {
-    return await done;
-  } finally {
-    server?.stop(true);
-  }
+  return servers;
 }
 
 type InterpretResult =
@@ -131,20 +154,4 @@ function interpret(params: Map<string, string>, expectedState: string): Interpre
     return { ok: false, error: new Error("state mismatch (possible CSRF)") };
   }
   return { ok: true, value: { code, state } };
-}
-
-async function pasteFallback(expectedState: string): Promise<CallbackResult> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  process.stderr.write(
-    "Could not bind the local callback port. Paste the full redirect URL (or code) here:\n",
-  );
-  const line = await new Promise<string>((resolve) => rl.once("line", resolve));
-  rl.close();
-  const { code, state } = parseCallbackInput(line);
-  if (!code) throw new Error("no authorization code found in pasted input");
-  const returnedState = state ?? "";
-  if (expectedState && returnedState && returnedState !== expectedState) {
-    throw new Error("state mismatch (possible CSRF)");
-  }
-  return { code, state: returnedState };
 }

@@ -26,6 +26,7 @@ export interface ProviderView {
   status: string;
   windows: WindowView[];
   monthlyCostLimit?: number;
+  monthCostUsed?: number;
 }
 
 export interface Snapshot {
@@ -102,13 +103,22 @@ function buildView(db: Database, prov: ProviderCfg, nowMs: number): ProviderView
       };
     }
   });
+  const monthlyCostLimit = prov.limits.monthly_cost;
+  let monthCostUsed: number | undefined;
+  if (monthlyCostLimit !== undefined) {
+    // Cost caps bill by calendar month; spend = this month's cost for the
+    // provider's own sources, independent of its token usage window.
+    const m = activeAt({ type: "monthly", day: 1 }, nowMs);
+    monthCostUsed = windowUsage(db, m.start, m.nextReset, sources, ompProvider).cost;
+  }
   return {
     id: prov.id,
     label: byId(prov.id)?.label ?? prov.id,
     enabled: prov.enabled,
     status,
     windows,
-    monthlyCostLimit: prov.limits.monthly_cost,
+    monthlyCostLimit,
+    monthCostUsed,
   };
 }
 
