@@ -2,19 +2,25 @@ import React from "react";
 import { Box, Text } from "ink";
 import { heatInk } from "../theme.ts";
 import { fmtTokens } from "../../report/format.ts";
+import { HOUR_MS, DAY_MS } from "../spans.ts";
 
 const COL = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const;
-const HOUR_MS = 3_600_000;
 
 export interface UsageChartProps {
   data: number[];
   startMs?: number;
   height?: number;
   labelEvery?: number;
+  bucketMs?: number;
 }
 
 function hourLabel(ms: number): string {
   return String(new Date(ms).getUTCHours()).padStart(2, "0");
+}
+
+function dateLabel(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 /**
@@ -22,13 +28,16 @@ function hourLabel(ms: number): string {
  * `renderHourlyGraph`. Each column is colored by its share of the peak
  * (green → yellow → red) via `heatInk`; axis chrome and labels render dim.
  */
-export function UsageChart({ data, startMs, height = 10, labelEvery = 3 }: UsageChartProps): React.JSX.Element {
+export function UsageChart({ data, startMs, height = 10, labelEvery, bucketMs }: UsageChartProps): React.JSX.Element {
+  const bMs = bucketMs ?? HOUR_MS;
+  const isDaily = bMs >= DAY_MS;
   const n = data.length;
   const max = n > 0 ? Math.max(...data) : 0;
   if (n === 0) return <Text dimColor>no activity</Text>;
 
   const gutter = Math.max(fmtTokens(max).length, 4);
   const colColor = data.map((v) => heatInk(max > 0 ? v / max : 0));
+  const every = labelEvery ?? (isDaily ? Math.max(5, Math.ceil(n / 10)) : Math.max(3, Math.ceil(n / 12)));
   const rows: React.JSX.Element[] = [];
 
   for (let row = height - 1; row >= 0; row--) {
@@ -55,8 +64,9 @@ export function UsageChart({ data, startMs, height = 10, labelEvery = 3 }: Usage
 
   let labelRow = " ".repeat(gutter + 2);
   for (let i = 0; i < n; ) {
-    if (i % labelEvery === 0 && i + 1 < n) {
-      labelRow += hourLabel((startMs ?? 0) + i * HOUR_MS);
+    if (i % every === 0 && i + 1 < n) {
+      const ms = (startMs ?? 0) + i * bMs;
+      labelRow += isDaily ? dateLabel(ms) : hourLabel(ms);
       i += 2;
     } else {
       labelRow += " ";

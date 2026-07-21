@@ -5,6 +5,7 @@ import type { Config } from "../config/types.ts";
 import { saveConfig } from "../config/config.ts";
 import { notify } from "../alerts/notify.ts";
 import { initialState, reducer, type Tab, type TuiState } from "./state.ts";
+import { readLaunchCache } from "./launchCache.ts";
 import { useRefresh } from "./useRefresh.ts";
 import { useTerminalSize } from "./useTerminalSize.ts";
 import { Tabs } from "./widgets/Tabs.tsx";
@@ -39,10 +40,14 @@ export function App({
   onLogin?: (req: LoginRequest) => void;
   reopenProvider?: string;
 }): React.JSX.Element {
-  const [state, dispatch] = useReducer(reducer, cfg.alerts, initialState);
+  const [state, dispatch] = useReducer(
+    reducer,
+    { alerts: cfg.alerts, dataDir },
+    ({ alerts, dataDir }) => initialState(alerts, readLaunchCache(dataDir)),
+  );
   const { exit } = useApp();
   const { columns, rows } = useTerminalSize();
-  const refresh = useRefresh({ db, cfg, dataDir, span: state.span, dispatch });
+  const refresh = useRefresh({ db, cfg, dataDir, spanId: state.spanId, dispatch });
   const providerLogin = useProviderLogin({ db, cfg, configFile, dataDir, accounts: state.accounts, refresh, dispatch });
 
   useEffect(() => {
@@ -90,6 +95,12 @@ export function App({
     if (input === "2") return dispatch({ t: "setTab", tab: "overview" });
     if (input === "3") return dispatch({ t: "setTab", tab: "settings" });
     if (key.tab) return dispatch({ t: "cycleTab" });
+    if (key.leftArrow || key.rightArrow) {
+      const order: Tab[] = ["limits", "overview", "settings"];
+      const idx = order.indexOf(state.tab);
+      const dir = key.rightArrow ? 1 : -1;
+      return dispatch({ t: "setTab", tab: order[(idx + dir + order.length) % order.length]! });
+    }
     if (input === "r") return refresh();
     if (input === "x") return dispatch({ t: "clearBanner" });
     if (input === "p") return providerLogin.open();
@@ -100,24 +111,24 @@ export function App({
       if (key.return) {
         if (state.settingsSel === 2) return dispatch({ t: "editStart" });
         if (state.settingsSel === 3) {
-          notify("amana: test alert", "This is a test notification from amana settings");
+          notify("Agent Mana: test alert", "This is a test notification from Agent Mana settings");
           return dispatch({ t: "setBanner", text: "test notification sent" });
         }
         return dispatch({ t: "settingsToggle" });
       }
-      if (input === " " || key.leftArrow || key.rightArrow) return dispatch({ t: "settingsToggle" });
+      if (input === " ") return dispatch({ t: "settingsToggle" });
       return;
     }
 
     // overview / provider detail
     if (input === "t") return dispatch({ t: "cycleSpan" });
     if (drilled) {
-      if (key.escape || key.leftArrow || key.backspace) dispatch({ t: "back" });
+      if (key.escape) dispatch({ t: "back" });
       return;
     }
     if (key.upArrow || input === "k") return dispatch({ t: "move", delta: -1, count });
     if (key.downArrow || input === "j") return dispatch({ t: "move", delta: 1, count });
-    if (key.return || key.rightArrow || input === "l") {
+    if (key.return) {
       if (selectedId) dispatch({ t: "drillIn", providerId: selectedId });
       return;
     }
@@ -129,10 +140,15 @@ export function App({
   return (
     <Box flexDirection="column" width={columns} height={rows} borderStyle="round" borderColor="cyan" paddingX={1}>
       <Box justifyContent="space-between">
-        <Box>
-          <Text bold color="cyan">amana </Text>
-          <Tabs tabs={TABS.map((t) => t.label)} active={activeTab} />
-          {drilled ? <Text dimColor> › {state.drillProvider}</Text> : null}
+        <Box flexDirection="column">
+          <Box>
+            <Text bold color="cyan">Agent Mana </Text>
+            <Text dimColor>monitor your model usage</Text>
+          </Box>
+          <Box>
+            <Tabs tabs={TABS.map((t) => t.label)} active={activeTab} />
+            {drilled ? <Text dimColor> › {state.drillProvider}</Text> : null}
+          </Box>
         </Box>
         {state.syncing ? <Text dimColor>syncing…</Text> : null}
       </Box>
@@ -160,10 +176,10 @@ function renderView(state: TuiState, db: Database): React.JSX.Element {
 
 function footerPairs(state: TuiState, drilled: boolean): [string, string][] {
   if (state.tab === "settings") {
-    return [["1/2/3", "view"], ["↑↓", "move"], ["Space", "toggle"], ["Enter", "edit"], ["p", "providers"], ["?", "help"], ["q", "quit"]];
+    return [["←/→/1-3", "view"], ["↑↓", "move"], ["Space", "toggle"], ["Enter", "edit"], ["p", "providers"], ["?", "help"], ["q", "quit"]];
   }
   if (drilled) {
-    return [["Esc/←", "back"], ["t", "span"], ["r", "refresh"], ["?", "help"], ["q", "quit"]];
+    return [["Esc", "back"], ["←/→", "view"], ["t", "span"], ["r", "refresh"], ["?", "help"], ["q", "quit"]];
   }
-  return [["1/2/3", "view"], ["↑↓", "select"], ["Enter", "open"], ["p", "providers"], ["t", "span"], ["r", "refresh"], ["q", "quit"]];
+  return [["←/→/1-3", "view"], ["↑↓", "select"], ["Enter", "open"], ["p", "providers"], ["t", "span"], ["r", "refresh"], ["q", "quit"]];
 }

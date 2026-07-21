@@ -14,8 +14,7 @@ import { colorFor } from "../theme.ts";
 import { fmtDuration, fmtTokens } from "../../report/format.ts";
 import { snapshotDeltaSeries, snapshotLevelSeries, type SnapshotLevel } from "../../db/snapshots.ts";
 import { useTerminalSize } from "../useTerminalSize.ts";
-
-const HOUR_MS = 3_600_000;
+import { isAllTime, spanById } from "../spans.ts";
 
 function resetsIn(resetsAt: number | undefined): string {
 	if (resetsAt === undefined) return "";
@@ -37,8 +36,8 @@ export function ProviderView({ state, db }: { state: TuiState; db: Database }): 
   const id = state.drillProvider ?? "";
   const reports = state.reports.filter((r) => r.provider === id);
   const errors = state.errors.filter((e) => e.provider === id);
-  const startMs = Math.floor(Date.now() / HOUR_MS) * HOUR_MS - (state.span - 1) * HOUR_MS;
-  const endMs = startMs + state.span * HOUR_MS;
+  const { startMs, endMs, bucketMs, buckets: windowBuckets } = state.spanWindow;
+  const span = spanById(state.spanId);
   const { rows } = useTerminalSize();
   const chartH = Math.max(8, Math.min(Math.floor(rows / 2), 14));
   // Scope the chart + model table to this provider's log sources (and omp
@@ -47,22 +46,19 @@ export function ProviderView({ state, db }: { state: TuiState; db: Database }): 
   // query the source-scoped series directly, exactly like breakdownByModel.
   const sources = sourcesFor(id);
   const ompProvider = byId(id)?.ompProvider ?? undefined;
-  const buckets = windowSeries(db, startMs, endMs, sources, ompProvider, state.span);
+  const buckets = windowSeries(db, startMs, endMs, sources, ompProvider, windowBuckets);
   const totalTokens = buckets.reduce((a, b) => a + b, 0);
   let chartData = buckets;
   let chartTotal = totalTokens;
   let unit = "tok";
   let level: SnapshotLevel | null = null;
   if (totalTokens === 0) {
-    // No log events for this provider: fall back to the polled snapshot
-    // series — consumption rate first, quota-fill level while deltas are
-    // still accumulating (rate needs 2+ polls inside the span).
-    chartData = snapshotDeltaSeries(db, startMs, endMs, { provider: id, buckets: state.span });
+    chartData = snapshotDeltaSeries(db, startMs, endMs, { provider: id, buckets: windowBuckets });
     chartTotal = chartData.reduce((a, b) => a + b, 0);
     const row = db.query("SELECT unit FROM usage_snapshots WHERE provider = ? ORDER BY fetched_at_ms DESC LIMIT 1").get(id) as { unit?: string } | undefined;
     unit = row?.unit ?? "tok";
     if (chartTotal === 0) {
-      level = snapshotLevelSeries(db, startMs, endMs, id, state.span);
+      level = snapshotLevelSeries(db, startMs, endMs, id, windowBuckets);
       if (level) chartData = level.series;
     }
   }
@@ -74,7 +70,7 @@ export function ProviderView({ state, db }: { state: TuiState; db: Database }): 
   return (
     <Box flexDirection="column">
       <Text bold color={colorFor(id)}>
-        {byId(id)?.label ?? id} · last {state.span}h · {headerStat(unit, chartTotal, level)}
+        {byId(id)?.label ?? id} · {isAllTime(span) ? "all-time" : `last ${span.label}`} · {headerStat(unit, chartTotal, level)}
       </Text>
 
       {reports.map((r) => (
@@ -108,7 +104,7 @@ export function ProviderView({ state, db }: { state: TuiState; db: Database }): 
       ) : null}
 
       <Box marginY={1} flexDirection="column">
-        <UsageChart data={chartData} startMs={startMs} height={chartH} />
+        <UsageChart data={chartData} startMs={startMs} bucketMs={bucketMs} height={chartH} />
         {level ? <Text dimColor>quota fill level · polled every refresh; rate chart appears after a few polls</Text> : null}
       </Box>
 
@@ -123,7 +119,7 @@ export function ProviderView({ state, db }: { state: TuiState; db: Database }): 
           rows={models.map((m) => [m.model, String(m.requests), fmtTokens(m.total_tokens), `$${m.cost.toFixed(2)}`])}
         />
       ) : (
-        <Text dimColor>no model activity for {id} in the last {state.span}h</Text>
+        <Text dimColor>no model activity for {id} in {isAllTime(span) ? "all-time" : `the last ${span.label}`}</Text>
       )}
     </Box>
   );

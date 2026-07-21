@@ -43,3 +43,9 @@ export function claudeDir(): string {
 export function credentialsFile(dataDir: string): string {
   return join(dataDir, "credentials.json");
 }
+
+/** Path to the last-session launch cache (mode 0600) — restores the dashboard
+ *  instantly on open before the live usage fetch completes. */
+export function launchCacheFile(dataDir: string): string {
+  return join(dataDir, "last-session.json");
+}

@@ -56,7 +56,7 @@ export async function run(): Promise<void> {
       if (pending === null) break;
       const req: LoginRequest = pending;
       const result = await performLogin(loginCtx, req);
-      process.stdout.write(`\n${result.message}\n\nPress Enter to return to amana…`);
+      process.stdout.write(`\n${result.message}\n\nPress Enter to return to Agent Mana…`);
       await waitForEnter();
       reopen = req.providerId;
     }

@@ -70,3 +70,10 @@ export function hourlyByProvider(
     (a, b) => b.totalTokens - a.totalTokens || a.provider.localeCompare(b.provider),
   );
 }
+
+/** Earliest recorded event timestamp (ms), or undefined when no events exist. */
+export function earliestEventMs(db: Database): number | undefined {
+  const row = db.query("SELECT MIN(timestamp_ms) AS m FROM usage_events").get() as { m: number | null } | undefined;
+  const m = row?.m;
+  return typeof m === "number" && Number.isFinite(m) ? m : undefined;
+}

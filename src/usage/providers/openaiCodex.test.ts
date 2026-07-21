@@ -7,8 +7,11 @@ import { describe, expect, test } from "bun:test";
 import {
   normalizeEpochMs,
   normalizeWindow,
+  openaiCodexFetcher,
   type WindowPayload,
 } from "./openaiCodex.ts";
+import type { Credential } from "../../auth/types.ts";
+import type { Database } from "bun:sqlite";
 
 const NOW = 1_700_000_000_000;
 
@@ -75,5 +78,61 @@ describe("normalizeWindow — absence", () => {
     const out = normalizeWindow({ limit_window_seconds: 60 }, NOW);
     expect(out.usedFraction).toBeUndefined();
     expect(out.durationMs).toBe(60_000);
+  });
+});
+
+const OAUTH: Credential = { type: "oauth", access: "tok", account_id: "acc-1", email: "u@e" };
+type FetchImpl = typeof globalThis.fetch;
+
+function stubReturning(body: unknown, captured: string[], status = 200): FetchImpl {
+  return async (input) => {
+    captured.push(typeof input === "string" ? input : input.toString());
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  };
+}
+
+describe("openaiCodexFetcher", () => {
+  test("calls {backend-api}/wham/usage and unwraps the rate_limits envelope", async () => {
+    const urls: string[] = [];
+    const orig = globalThis.fetch;
+    globalThis.fetch = stubReturning(
+      {
+        rate_limits: {
+          plan_type: "pro",
+          rate_limit: {
+            primary_window: { used_percent: 42, reset_at: NOW + 60_000 },
+            secondary_window: { used_percent: 84, reset_at: NOW + 60_000 },
+          },
+        },
+      },
+      urls,
+    );
+    try {
+      const report = await openaiCodexFetcher.fetch(OAUTH, {} as Database);
+      expect(urls[0]).toBe("https://chatgpt.com/backend-api/wham/usage");
+      expect(report?.limits).toHaveLength(2);
+      expect(report?.limits?.[0]?.amount?.usedFraction).toBeCloseTo(0.42, 9);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  test("accepts the legacy flat payload shape", async () => {
+    const urls: string[] = [];
+    const orig = globalThis.fetch;
+    globalThis.fetch = stubReturning(
+      { plan_type: "plus", rate_limit: { primary_window: { used_percent: 10, reset_at: NOW + 60_000 } } },
+      urls,
+    );
+    try {
+      const report = await openaiCodexFetcher.fetch(OAUTH, {} as Database);
+      expect(urls[0]).toBe("https://chatgpt.com/backend-api/wham/usage");
+      expect(report?.limits).toHaveLength(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
   });
 });

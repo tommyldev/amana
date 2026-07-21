@@ -1,4 +1,4 @@
-# amana parity loop log
+# Agent Mana parity loop log
 
 Running the loop in `docs/parity-loop-prompt.md`. One entry per gap:
 `SELECT` → verdict (`SHIPPED` / `BLOCKED` / `SKIPPED`) with evidence.
@@ -11,7 +11,7 @@ Running the loop in `docs/parity-loop-prompt.md`. One entry per gap:
   limits (Anthropic Claude Pro/Max, Codex, Z.AI) show BOTH a rolling 5-hour
   burst limit AND a weekly cap. A good monitor surfaces both so you never blow
   the weekly cap while the 5h reads 0%.
-- **Current amana behavior:** For local (non-live) providers, `amana report`
+- **Current Agent Mana behavior:** For local (non-live) providers, `amana report`
   renders only `soonest(view)` and the TUI Limits view renders only
   `primary(snap)` — i.e. one window per provider. `defaults.ts` gives every
   `FiveHourWeekly` provider `extra_windows = [weekly]`, and `buildView`
@@ -57,7 +57,7 @@ directly in-session):
 
 Evidence:
 - `bun run typecheck` → clean. `bun run build` → `built dist/amana`.
-- `bun test` (17 amana files) → `142 pass, 0 fail`.
+- `bun test` (17 Agent Mana files) → `142 pass, 0 fail`.
 - `amana report` tail:
   ```
   omp   [rolling 5h]   resets in 3h 34m   ░░░░░░░░░░   0%  ·  133.7M tok $79.03
@@ -78,7 +78,7 @@ Evidence:
   thresholds (default 75/90/100%) fire a desktop notification and an in-TUI
   banner when a limit is crossed." A monitor's whole point is to warn you
   BEFORE you hit a cap.
-- **Current amana behavior:** `useRefresh.ts` step 5 calls
+- **Current Agent Mana behavior:** `useRefresh.ts` step 5 calls
   `checkAndFire(db, cfg.alerts, reports)` with ONLY live `reports`. Local
   providers — the default `omp`/`claude-code` and anything with
   `amana limit set <id> --tokens N` but no live login — are never evaluated,
@@ -117,7 +117,7 @@ Fix (implemented + verified in-session; subagent path still 429-limited):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (18 amana files) → `147 pass, 0 fail`.
+- `bun test` (18 Agent Mana files) → `147 pass, 0 fail`.
 - End-to-end smoke (mirrors useRefresh step 5): claude-code local, cap 10000,
   used 9500 →
   ```
@@ -138,7 +138,7 @@ this cycle (token cap only) — a candidate for a later cycle.
 - **Reference behavior:** A provider dashboard's detail view leads with that
   provider's window usage/limits. Overview and Limits both show per-window
   local usage (cycle 1); the drill-in should too.
-- **Current amana behavior:** `ProviderView` renders window bars only from live
+- **Current Agent Mana behavior:** `ProviderView` renders window bars only from live
   `reports`. Drilling into a local provider (default `omp`/`claude-code`, or any
   logged-usage provider without a login) shows the header + chart + model table
   but NO window usage summary — inconsistent with Overview/Limits.
@@ -167,7 +167,7 @@ Fix (implemented + verified in-session; subagent path still 429-limited):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (19 amana files) → `149 pass, 0 fail`.
+- `bun test` (19 Agent Mana files) → `149 pass, 0 fail`.
 - Render → `.pr-assets/provider-drill-in.txt`. Gauge line:
   ```
   token budget · rolling 5h ● ████████░░░░░░░░░░░░ 42%  4.2k / 10.0k tok · resets in 3h 24m
@@ -184,7 +184,7 @@ Evidence:
   input rate and 5-minute cache **writes at 1.25×**. Agentic Claude Code usage
   is cache-dominated (cache reads routinely dwarf fresh input), so cost must
   include cache tokens — provider dashboards do.
-- **Current amana behavior:** `price.ts::cost(model, prompt, completion)` ignores
+- **Current Agent Mana behavior:** `price.ts::cost(model, prompt, completion)` ignores
   cache entirely, and `ingest/claudeCode.ts` calls it with only prompt+completion
   even though it parses and stores `cache_read_tokens`/`cache_write_tokens`. The
   default `claude-code` provider's computed `$` is materially undercounted; omp
@@ -214,7 +214,7 @@ Fix (implemented + verified in-session; subagent path still 429-limited):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (19 amana files) → `154 pass, 0 fail`.
+- `bun test` (19 Agent Mana files) → `154 pass, 0 fail`.
 - Smoke (realistic agentic turn: 1.2k in / 800 out / 450k cache-read / 30k
   cache-write, claude-sonnet-4):
   ```
@@ -231,7 +231,7 @@ Evidence:
 - **Reference behavior:** A utilization bar means "how much of your limit is
   used." A monitor must not render a full/red bar for a provider you're nowhere
   near limiting.
-- **Current amana behavior (bug):** In `buildOverviewRows`, a provider with no
+- **Current Agent Mana behavior (bug):** In `buildOverviewRows`, a provider with no
   live quota and no configured token cap got `pct = used / grandTotal` (share of
   span usage), and `OverviewView` always rendered a `LineGauge`. `LineGauge`
   colors by `statusOf(pct/100)`, so a sole active provider (100% share) showed a
@@ -254,7 +254,7 @@ Fix (implemented + verified in-session; subagent path still 429-limited):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (20 amana files) → `158 pass, 0 fail`.
+- `bun test` (20 Agent Mana files) → `158 pass, 0 fail`.
 - Render → `.pr-assets/overview-view.txt`:
   ```
   › Claude Code logs       ● ██████████████████░░ 90%  4.5k / 5.0k tok · local
@@ -270,7 +270,7 @@ Evidence:
 - **Reference behavior:** A percent/bar means utilization of a limit. Without a
   configured limit there is no percentage to show (0% of what?). CLI analog of
   cycle 5's Overview fix.
-- **Current amana behavior:** `report.ts::renderWindowLine` always renders
+- **Current Agent Mana behavior:** `report.ts::renderWindowLine` always renders
   `${bar(w.pct)} ${pct}%` even when the window has no `tokenLimit`, so every
   limitless window prints `░░░░░░░░░░   0%` — a meaningless empty bar.
 - **Eligible:** Yes — local CLI render, no deps, files <200.
@@ -297,7 +297,7 @@ and failed again with 429 rate-limit — delegation still blocked):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (20 amana files) → `160 pass, 0 fail`.
+- `bun test` (20 Agent Mana files) → `160 pass, 0 fail`.
 - CLI smoke (`amana report`):
   ```
   omp   [rolling 5h]   resets in 3h 13m   ·  169.0M tok $101.76
@@ -315,7 +315,7 @@ Evidence:
 - **Reference behavior:** `--provider <id>` should scope the chart to that
   provider's usage, consistent with `report`/TUI (which key by log source +
   omp `provider` filter). Documented ids include `omp` and `claude-code`.
-- **Current amana behavior (bug):** `graph.ts` filters `hourlyByProvider` by the
+- **Current Agent Mana behavior (bug):** `graph.ts` filters `hourlyByProvider` by the
   raw event `provider` field. Aggregate source ids (`omp`, `claude-code`) never
   match a raw field, so `amana graph --provider claude-code` prints `0 tok` and
   a blank chart even when data exists (verified: `--provider anthropic` shows
@@ -346,7 +346,7 @@ Fix (implemented + verified in-session; subagent path still 429-limited):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (21 amana files) → `164 pass, 0 fail`.
+- `bun test` (21 Agent Mana files) → `164 pass, 0 fail`.
 - CLI smoke (previously `0 tok` for both):
   ```
   token usage/hour · last 24h · omp · 1483.4M tok · $896.66
@@ -361,7 +361,7 @@ Evidence:
 - **Status:** SHIPPED
 - **Reference behavior:** Anthropic prices Claude Sonnet 3.7 at $3/Mtok input,
   $15/Mtok output (same family as 3.5 Sonnet / Sonnet 4). Cost must reflect it.
-- **Current amana behavior (bug):** `price.ts` has no `claude-3-7-sonnet`
+- **Current Agent Mana behavior (bug):** `price.ts` has no `claude-3-7-sonnet`
   pattern, and its prefixes don't match it (`claude-3-5-sonnet`/`claude-sonnet-4`
   are not substrings of `claude-3-7-sonnet-…`). Verified: `cost("claude-3-7-
   sonnet-20250219", 1M, 1M)` → `undefined` while 3.5/4/4.5/opus-4.1/haiku-4.5
@@ -387,7 +387,7 @@ Evidence:
 - Pre-fix probe: `cost("claude-3-7-sonnet-20250219", 1M, 1M)` → `undefined`;
   post-fix → `18`.
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (21 amana files) → `165 pass, 0 fail`.
+- `bun test` (21 Agent Mana files) → `165 pass, 0 fail`.
 - Line count: price.ts 60 — <200.
 
 ---
@@ -397,7 +397,7 @@ Evidence:
 - **Status:** SHIPPED
 - **Reference behavior:** A cost budget is useful only if you see spend against
   it (`$spend / $cap`), like a provider billing dashboard.
-- **Current amana behavior (bug):** After `amana limit set <id> --cost N`, the
+- **Current Agent Mana behavior (bug):** After `amana limit set <id> --cost N`, the
   TUI Limits "monthly cost cap" row rendered `cap $N.00` with `pct:0` and NO
   gauge — no current spend, so you couldn't tell how close you were.
 - **Eligible:** Yes — computes this-month cost from already-ingested events; no
@@ -421,7 +421,7 @@ Fix (implemented + verified in-session; delegation still 429-blocked):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (21 amana files) → `166 pass, 0 fail`.
+- `bun test` (21 Agent Mana files) → `166 pass, 0 fail`.
 - Render → `.pr-assets/limits-cost-cap.txt`:
   ```
   ● █████████████░░░░░░░ 64%  monthly cost cap · $6.40 / $10.00 · local
@@ -438,7 +438,7 @@ out of scope — cycle 2 added token-cap alerts only. Candidate for a later cycl
 - **Status:** SHIPPED
 - **Reference behavior:** A configured cost budget should warn you as spend
   approaches it — the same threshold alerts token caps get (cycles 2 + 9).
-- **Current amana behavior (bug):** `localAlertReports` (cycle 2) emitted only a
+- **Current Agent Mana behavior (bug):** `localAlertReports` (cycle 2) emitted only a
   token-budget limit, so `amana limit set <id> --cost N` produced no alert even
   at 100% of the cost cap. The monthly spend (cycle 9's `monthCostUsed`) was
   displayed but never evaluated for alerts.
@@ -464,7 +464,7 @@ Fix (implemented + verified in-session; delegation still 429-blocked):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (21 amana files) → `169 pass, 0 fail`.
+- `bun test` (21 Agent Mana files) → `169 pass, 0 fail`.
 - End-to-end smoke (mirrors useRefresh step 5): $9.50 of $10 cap →
   ```
   fired: 1
@@ -480,7 +480,7 @@ Evidence:
 - **Status:** SHIPPED
 - **Reference behavior:** A window's cost is that window's cost; a monthly budget
   is compared against the month's spend — not against a 5-hour or weekly slice.
-- **Current amana behavior (bug):** `renderWindowLine` used `costStr(prov, ...)`,
+- **Current Agent Mana behavior (bug):** `renderWindowLine` used `costStr(prov, ...)`,
   which appends `/ $<monthly cap>` to EVERY window. Verified with
   `limit set claude-code --cost 20`:
   ```
@@ -508,7 +508,7 @@ Fix (implemented + verified in-session; delegation still 429-blocked):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (21 amana files) → `170 pass, 0 fail`.
+- `bun test` (21 Agent Mana files) → `170 pass, 0 fail`.
 - CLI smoke:
   ```
   claude-code   [rolling 5h]   resets in 2h 56m   ·  0 tok -
@@ -524,7 +524,7 @@ Evidence:
 - **Status:** SHIPPED
 - **Reference behavior:** In-app help must match actual behavior. After cycles 2
   and 10, alerts fire on live quota AND locally-configured token/cost caps.
-- **Current amana behavior (bug):** `SettingsView` printed "fires when a live
+- **Current Agent Mana behavior (bug):** `SettingsView` printed "fires when a live
   limit crosses a threshold", telling users they must log in for alerts — false
   since cycle 2 (local token caps) and cycle 10 (local cost caps).
 - **Eligible:** Yes — in-app text; local; file <200.
@@ -542,7 +542,7 @@ big structural gaps are closed):
 
 Evidence:
 - `bun run typecheck` clean; `bun run build` → `built dist/amana`.
-- `bun test` (22 amana files) → `172 pass, 0 fail`.
+- `bun test` (22 Agent Mana files) → `172 pass, 0 fail`.
 - Render → `.pr-assets/settings-view.txt`:
   ```
   alerts

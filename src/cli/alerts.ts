@@ -46,7 +46,7 @@ export async function run(argv: string[]): Promise<void> {
       return;
     }
     case "test": {
-      notify("amana: test alert", "This is a test notification from amana alerts test");
+      notify("Agent Mana: test alert", "This is a test notification from Agent Mana alerts test");
       console.log("fired a test notification (check your desktop; on failure see stderr)");
       return;
     }

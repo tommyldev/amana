@@ -18,7 +18,7 @@ const COMMANDS: Record<string, () => Promise<{ run: Handler }>> = {
   graph: () => import("./cli/graph.ts"),
 };
 
-const USAGE = `amana — Agent Token Observer & Monitor
+const USAGE = `Agent Mana — monitor your model usage
 
 Usage: amana [command] [options]
 
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
 
   const loader = COMMANDS[cmd];
   if (!loader) {
-    process.stderr.write(`amana: unknown command '${cmd}'\n\n${USAGE}`);
+    process.stderr.write(`Agent Mana: unknown command '${cmd}'\n\n${USAGE}`);
     process.exit(1);
   }
 
@@ -66,6 +66,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  process.stderr.write(`amana: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(`Agent Mana: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
 });

@@ -43,7 +43,7 @@ export function cliUi(): LoginUi {
     prompt(info: AuthPrompt): void {
       openBrowser(info.url);
       const codeLine = info.userCode ? `\nEnter code: ${info.userCode}\n` : "";
-      console.log(`Authorize amana by visiting:\n  ${info.url}\n${codeLine}`);
+      console.log(`Authorize Agent Mana by visiting:\n  ${info.url}\n${codeLine}`);
       if (info.needsPaste) {
         console.log(
           "Waiting for the browser to redirect back…\n" +

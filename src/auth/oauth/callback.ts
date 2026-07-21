@@ -16,15 +16,15 @@ export interface CallbackResult {
 }
 
 const SUCCESS_HTML =
-  "<!doctype html><meta charset=utf-8><title>amana</title>" +
+  "<!doctype html><meta charset=utf-8><title>Agent Mana</title>" +
   "<body style=\"font:14px system-ui;padding:2rem\">" +
-  "<h2>amana: authentication complete</h2>" +
+  "<h2>Agent Mana: authentication complete</h2>" +
   "<p>You can close this tab and return to the terminal.</p></body>";
 
 const FAILURE_HTML =
-  "<!doctype html><meta charset=utf-8><title>amana</title>" +
+  "<!doctype html><meta charset=utf-8><title>Agent Mana</title>" +
   "<body style=\"font:14px system-ui;padding:2rem\">" +
-  "<h2>amana: authentication failed</h2>" +
+  "<h2>Agent Mana: authentication failed</h2>" +
   "<p>Check the terminal for details.</p></body>";
 
 interface LoopbackServer {

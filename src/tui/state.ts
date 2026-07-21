@@ -10,6 +10,8 @@ import type { FetchError } from "../usage/orchestrator.ts";
 import type { ProviderHourly } from "../db/types.ts";
 import type { OverviewRow } from "./views/derive.ts";
 import type { LimitRow } from "./views/limitRows.ts";
+import { DEFAULT_SPAN_ID, nextSpanId, spanById, spanWindow, type SpanWindow } from "./spans.ts";
+import type { LaunchCache } from "./launchCache.ts";
 
 export type Tab = "limits" | "overview" | "settings";
 
@@ -39,7 +41,8 @@ export interface TuiState {
   bannerAt: number | null;
   syncing: boolean;
   helpVisible: boolean;
-  span: number;
+  spanId: string;
+  spanWindow: SpanWindow;
   settings: { enabled: boolean; desktop: boolean; thresholds: number[] };
   settingsSel: number;
   editing: boolean;
@@ -60,6 +63,7 @@ export type Action =
       errors: FetchError[];
       tokenSeries: ProviderHourly[];
       totalSeries: number[];
+      spanWindow: SpanWindow;
       accounts: AccountRow[];
     }
   | { t: "setSyncing"; on: boolean }
@@ -75,30 +79,31 @@ export type Action =
   | { t: "editCommit" }
   | { t: "editCancel" };
 
-const SPAN_CYCLE: number[] = [12, 24, 48];
 
-export function initialState(alerts: AlertsCfg): TuiState {
-  return {
+export function initialState(alerts: AlertsCfg, launch?: LaunchCache | null): TuiState {
+  const base: TuiState = {
     tab: "limits",
     drillProvider: null,
     selection: 0,
-    overviewRows: [],
-    limitRows: [],
-    reports: [],
-    errors: [],
-    tokenSeries: [],
-    totalSeries: [],
-    accounts: [],
+    overviewRows: launch?.overviewRows ?? [],
+    limitRows: launch?.limitRows ?? [],
+    reports: launch?.reports ?? [],
+    errors: launch?.errors ?? [],
+    tokenSeries: launch?.tokenSeries ?? [],
+    totalSeries: launch?.totalSeries ?? [],
+    accounts: launch?.accounts ?? [],
     banner: null,
     bannerAt: null,
     syncing: false,
     helpVisible: false,
-    span: 24,
+    spanId: launch?.spanId ?? DEFAULT_SPAN_ID,
+    spanWindow: launch?.spanWindow ?? spanWindow(spanById(DEFAULT_SPAN_ID), Date.now()),
     settings: { enabled: alerts.enabled, desktop: alerts.desktop, thresholds: [...alerts.thresholds] },
     settingsSel: 0,
     editing: false,
     editBuffer: "",
   };
+  return base;
 }
 
 /** Parse a CSV of ints in 1..100, deduped and sorted; empty → keep previous. */
@@ -147,6 +152,7 @@ export function reducer(s: TuiState, a: Action): TuiState {
         errors: a.errors,
         tokenSeries: a.tokenSeries,
         totalSeries: a.totalSeries,
+        spanWindow: a.spanWindow,
         accounts: a.accounts,
       };
 
@@ -162,10 +168,8 @@ export function reducer(s: TuiState, a: Action): TuiState {
     case "toggleHelp":
       return { ...s, helpVisible: !s.helpVisible };
 
-    case "cycleSpan": {
-      const idx = SPAN_CYCLE.indexOf(s.span);
-      return { ...s, span: SPAN_CYCLE[(idx + 1) % SPAN_CYCLE.length]! };
-    }
+    case "cycleSpan":
+      return { ...s, spanId: nextSpanId(s.spanId) };
 
     case "settingsMove": {
       const raw = s.settingsSel + a.delta;

@@ -52,7 +52,7 @@ export async function run(argv: string[]): Promise<void> {
 
   const kind = loginKindFor(id);
   if (kind === undefined) {
-    throw new Error(`amana has no login flow for '${id}' yet. supported: ${loginableIds().join(", ")}`);
+    throw new Error(`Agent Mana has no login flow for '${id}' yet. supported: ${loginableIds().join(", ")}`);
   }
 
   const c = cliContext();

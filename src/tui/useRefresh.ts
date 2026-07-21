@@ -1,20 +1,18 @@
 /**
- * Data loop for the TUI. One cycle:
- *   1. mark syncing
- *   2. runSync (incremental)
- *   3. fetchAll (live usage per credential)
- *   4. hourlyByProvider over the last `span` hours + elementwise total
- *   5. accounts: walk credentials, compute label + expiry + matching error
- *   6. alerts.checkAndFire — banner shows the LATEST fired event
- *   7. dispatch setData + setSyncing(false)
+ * Data loop for the TUI. Two paths share one `refresh(mode)` entry point:
  *
- * Overlapping cycles are skipped via an in-flight ref so a slow refresh
- * never doubles up. The interval re-arms every `cfg.ui.refresh_interval_seconds`
- * seconds AND when `span` changes (the token window must follow the selected
- * span). The `r` key in App calls the returned `refresh()` directly.
+ *  - "full" (mount, periodic interval, `r` key): runSync → fetchAll →
+ *    snapshots → accounts → limitRows → alerts, then the span view is
+ *    computed and the per-span cache is rebuilt. Expensive (network + ingest).
+ *  - "span" (span cycle via the `t` key): no sync, no fetch. Reads the
+ *    span-independent products (reports/accounts/limitRows) and either a
+ *    previously computed per-span view, or a cheap DB-only recompute, from
+ *    the cache populated by the last full refresh.
  *
- * Every stage is wrapped in try/catch — a thrown error in one stage must
- * never kill the loop or leave `syncing` stuck on.
+ * `refresh` reads the current span from a ref, so its identity is stable
+ * across span changes — the periodic interval does not tear down when the
+ * user cycles spans. Every stage is wrapped in try/catch so a thrown error
+ * can never kill the loop or leave `syncing` stuck on.
  */
 import { useCallback, useEffect, useRef } from "react";
 import type { Database } from "bun:sqlite";
@@ -23,9 +21,10 @@ import type { ProviderHourly } from "../db/types.ts";
 import type { UsageReport } from "../usage/types.ts";
 import type { FetchError } from "../usage/orchestrator.ts";
 import type { AccountRow, Action } from "./state.ts";
+import type { SpanWindow } from "./spans.ts";
 import { runSync } from "../ingest/sync.ts";
 import { fetchAll } from "../usage/orchestrator.ts";
-import { hourlyByProvider, windowSeries } from "../db/series.ts";
+import { earliestEventMs, hourlyByProvider, windowSeries } from "../db/series.ts";
 import { allProviders, load } from "../auth/store.ts";
 import { accountLabel } from "../auth/types.ts";
 import { checkAndFire } from "../alerts/engine.ts";
@@ -35,8 +34,8 @@ import { buildOverviewRows, type OverviewRow } from "./views/derive.ts";
 import { buildLimitRows, type LimitRow } from "./views/limitRows.ts";
 import { byId } from "../registry.ts";
 import { recordSnapshots, pruneSnapshots, snapshotDeltaSeries } from "../db/snapshots.ts";
-
-const HOUR_MS = 3_600_000;
+import { spanById, spanWindow } from "./spans.ts";
+import { readLaunchCache, writeLaunchCache } from "./launchCache.ts";
 
 /** OAuth expiry as a human string relative to now. */
 function oauthExpiry(expires: number | undefined, nowMs: number): string {
@@ -71,30 +70,141 @@ function buildAccountRows(dataDir: string, errors: FetchError[], nowMs: number):
   return rows;
 }
 
+interface SpanView {
+  spanWindow: SpanWindow;
+  totalSeries: number[];
+  tokenSeries: ProviderHourly[];
+  overviewRows: OverviewRow[];
+}
+
+interface Cached {
+  reports: UsageReport[];
+  errors: FetchError[];
+  accounts: AccountRow[];
+  limitRows: LimitRow[];
+  spans: Map<string, SpanView>;
+}
+
+/** Span-dependent slice (chart series + overview rows) derived purely from
+ *  the DB + the cached live reports. This is the only work a span switch does. */
+function computeSpanView(
+  db: Database,
+  cfg: Config,
+  spanId: string,
+  nowMs: number,
+  reports: UsageReport[],
+  errors: FetchError[],
+): SpanView {
+  const span = spanById(spanId);
+  const win = spanWindow(span, nowMs, earliestEventMs(db));
+
+  let tokenSeries: ProviderHourly[] = [];
+  const totalSeries: number[] = new Array<number>(win.buckets).fill(0);
+  try {
+    tokenSeries = hourlyByProvider(db, win.startMs, win.bucketMs, win.buckets);
+    for (const p of tokenSeries) {
+      for (let i = 0; i < win.buckets; i++) totalSeries[i] += p.buckets[i] ?? 0;
+    }
+    // Snapshot deltas feed limits-API-only providers; exclude log-covered
+    // providers so they aren't double-counted. Separate catch so a snapshot
+    // failure can't corrupt the log-derived total.
+    try {
+      const logProviders = new Set(tokenSeries.filter((p) => p.totalTokens > 0).map((p) => p.provider));
+      const snapTokens = snapshotDeltaSeries(db, win.startMs, win.endMs, { buckets: win.buckets, unit: "tokens", excludeProviders: logProviders });
+      for (let i = 0; i < win.buckets; i++) totalSeries[i] = (totalSeries[i] ?? 0) + (snapTokens[i] ?? 0);
+    } catch (e) {
+      console.error("[Agent Mana] snapshotDeltaSeries failed:", e instanceof Error ? e.message : e);
+    }
+  } catch (e) {
+    console.error("[Agent Mana] hourlyByProvider failed:", e instanceof Error ? e.message : e);
+  }
+
+  let overviewRows: OverviewRow[] = [];
+  try {
+    const spanTotals = new Map<string, number>();
+    for (const prov of cfg.providers) {
+      if (!prov.enabled) continue;
+      const buckets = windowSeries(db, win.startMs, win.endMs, sourcesFor(prov.id), byId(prov.id)?.ompProvider ?? undefined, win.buckets);
+      spanTotals.set(prov.id, buckets.reduce((s, v) => s + v, 0));
+    }
+    overviewRows = buildOverviewRows(cfg, reports, errors, spanTotals, span.label);
+  } catch (e) {
+    console.error("[Agent Mana] overview build failed:", e instanceof Error ? e.message : e);
+  }
+
+  return { spanWindow: win, totalSeries, tokenSeries, overviewRows };
+}
+
+function dispatchData(dispatch: (a: Action) => void, c: Cached, view: SpanView): void {
+  dispatch({
+    t: "setData",
+    overviewRows: view.overviewRows,
+    limitRows: c.limitRows,
+    reports: c.reports,
+    errors: c.errors,
+    tokenSeries: view.tokenSeries,
+    totalSeries: view.totalSeries,
+    accounts: c.accounts,
+    spanWindow: view.spanWindow,
+  });
+}
+
 export function useRefresh(args: {
   db: Database;
   cfg: Config;
   dataDir: string;
-  span: number;
+  spanId: string;
   dispatch: (a: Action) => void;
 }): () => void {
-  const { db, cfg, dataDir, span, dispatch } = args;
+  const { db, cfg, dataDir, dispatch } = args;
   const inFlight = useRef(false);
+  const cacheRef = useRef<Cached | null>(null);
+  const spanIdRef = useRef(args.spanId);
+  useEffect(() => {
+    spanIdRef.current = args.spanId;
+  }, [args.spanId]);
+  useEffect(() => {
+    if (cacheRef.current) return;
+    const lc = readLaunchCache(dataDir);
+    if (!lc) return;
+    cacheRef.current = {
+      reports: lc.reports,
+      errors: lc.errors,
+      accounts: lc.accounts,
+      limitRows: lc.limitRows,
+      spans: new Map([
+        [lc.spanId, { spanWindow: lc.spanWindow, totalSeries: lc.totalSeries, tokenSeries: lc.tokenSeries, overviewRows: lc.overviewRows }],
+      ]),
+    };
+  }, [dataDir]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (mode: "full" | "span" = "full"): Promise<void> => {
+    const spanId = spanIdRef.current;
+
+    // Cheap path: a span cycle with a warm cache serves from cache, or does a
+    // DB-only recompute — never sync/fetch. No `syncing` indicator: it's fast.
+    const cached = cacheRef.current;
+    if (mode === "span" && cached) {
+      let view = cached.spans.get(spanId);
+      if (!view) {
+        view = computeSpanView(db, cfg, spanId, Date.now(), cached.reports, cached.errors);
+        cached.spans.set(spanId, view);
+      }
+      dispatchData(dispatch, cached, view);
+      return;
+    }
+
     if (inFlight.current) return;
     inFlight.current = true;
     dispatch({ t: "setSyncing", on: true });
 
     try {
-      // 1. Sync (ingest local log sources).
       try {
         await runSync(db, cfg, dataDir, false);
       } catch (e) {
-        console.error("[amana] runSync failed:", e instanceof Error ? e.message : e);
+        console.error("[Agent Mana] runSync failed:", e instanceof Error ? e.message : e);
       }
 
-      // 2. Live usage fetches per stored credential.
       let reports: UsageReport[] = [];
       let errors: FetchError[] = [];
       try {
@@ -102,82 +212,32 @@ export function useRefresh(args: {
         reports = result.reports;
         errors = result.errors;
       } catch (e) {
-        console.error("[amana] fetchAll failed:", e instanceof Error ? e.message : e);
+        console.error("[Agent Mana] fetchAll failed:", e instanceof Error ? e.message : e);
       }
 
-      // 2b. Persist + prune snapshots. Cheap DB writes; one shared catch so a
-      // prune failure can't stop a record (and vice versa).
       try {
         recordSnapshots(db, reports);
         pruneSnapshots(db, Date.now() - 30 * 24 * 60 * 60 * 1000);
       } catch (e) {
-        console.error("[amana] recordSnapshots failed:", e instanceof Error ? e.message : e);
+        console.error("[Agent Mana] recordSnapshots failed:", e instanceof Error ? e.message : e);
       }
 
-      // 3. Hourly token series for the current span window.
-      let tokenSeries: ProviderHourly[] = [];
-      const totalSeries: number[] = new Array<number>(span).fill(0);
-      try {
-        const startMs = Math.floor(Date.now() / HOUR_MS) * HOUR_MS - (span - 1) * HOUR_MS;
-        tokenSeries = hourlyByProvider(db, startMs, HOUR_MS, span);
-        for (const p of tokenSeries) {
-          for (let i = 0; i < span; i++) totalSeries[i] += p.buckets[i] ?? 0;
-        }
-
-        // Snapshot deltas: providers with only a limits API (zai/anthropic/
-        // google/xai/...) feed the overview chart here. Exclude providers
-        // already covered by log ingestion to avoid double-counting. Wrapped
-        // separately so a snapshot failure can't corrupt the log-derived
-        // totalSeries.
-        try {
-          const logProviders = new Set(tokenSeries.filter((p) => p.totalTokens > 0).map((p) => p.provider));
-          const snapTokens = snapshotDeltaSeries(db, startMs, startMs + span * HOUR_MS, { buckets: span, unit: "tokens", excludeProviders: logProviders });
-          for (let i = 0; i < span; i++) totalSeries[i] = (totalSeries[i] ?? 0) + (snapTokens[i] ?? 0);
-        } catch (e) {
-          console.error("[amana] snapshotDeltaSeries failed:", e instanceof Error ? e.message : e);
-        }
-      } catch (e) {
-        console.error("[amana] hourlyByProvider failed:", e instanceof Error ? e.message : e);
-      }
-
-      // 4. Accounts.
       let accounts: AccountRow[] = [];
       try {
         accounts = buildAccountRows(dataDir, errors, Date.now());
       } catch (e) {
-        console.error("[amana] account build failed:", e instanceof Error ? e.message : e);
+        console.error("[Agent Mana] account build failed:", e instanceof Error ? e.message : e);
       }
 
-      // 4b. Overview rows: live quota when logged in, else per-provider token
-      // usage over the selected span (source-scoped so aggregate ids like
-      // omp/claude-code attribute correctly).
-      let overviewRows: OverviewRow[] = [];
-      try {
-        const startMs = Math.floor(Date.now() / HOUR_MS) * HOUR_MS - (span - 1) * HOUR_MS;
-        const endMs = startMs + span * HOUR_MS;
-        const spanTotals = new Map<string, number>();
-        for (const prov of cfg.providers) {
-          if (!prov.enabled) continue;
-          const buckets = windowSeries(db, startMs, endMs, sourcesFor(prov.id), byId(prov.id)?.ompProvider ?? undefined, span);
-          spanTotals.set(prov.id, buckets.reduce((s, v) => s + v, 0));
-        }
-        overviewRows = buildOverviewRows(cfg, reports, errors, spanTotals, span);
-      } catch (e) {
-        console.error("[amana] overview build failed:", e instanceof Error ? e.message : e);
-      }
-
-      // 4c. Limit rows (default view): live quota, else configured caps.
       let limitRows: LimitRow[] = [];
       let snap: Snapshot | undefined;
       try {
         snap = buildSnapshot(db, cfg, Date.now());
         limitRows = buildLimitRows(cfg, reports, errors, snap);
       } catch (e) {
-        console.error("[amana] limits build failed:", e instanceof Error ? e.message : e);
+        console.error("[Agent Mana] limits build failed:", e instanceof Error ? e.message : e);
       }
 
-      // 5. Alerts → banner. Local providers with a configured token cap are
-      // evaluated alongside live quota (deduped per reset) — no login needed.
       try {
         const liveProviders = new Set(reports.map((r) => r.provider));
         const localReports = snap ? localAlertReports(cfg, snap, liveProviders) : [];
@@ -190,25 +250,39 @@ export function useRefresh(args: {
           });
         }
       } catch (e) {
-        console.error("[amana] checkAndFire failed:", e instanceof Error ? e.message : e);
+        console.error("[Agent Mana] checkAndFire failed:", e instanceof Error ? e.message : e);
       }
 
-      // 6. Push the snapshot.
-      dispatch({ t: "setData", overviewRows, limitRows, reports, errors, tokenSeries, totalSeries, accounts });
+      const next: Cached = { reports, errors, accounts, limitRows, spans: new Map() };
+      const view = computeSpanView(db, cfg, spanId, Date.now(), reports, errors);
+      next.spans.set(spanId, view);
+      cacheRef.current = next;
+      dispatchData(dispatch, next, view);
+      writeLaunchCache(dataDir, {
+        savedAt: Date.now(),
+        spanId,
+        spanWindow: view.spanWindow,
+        overviewRows: view.overviewRows,
+        limitRows: next.limitRows,
+        reports: next.reports,
+        errors: next.errors,
+        tokenSeries: view.tokenSeries,
+        totalSeries: view.totalSeries,
+        accounts: next.accounts,
+      });
     } finally {
       inFlight.current = false;
       dispatch({ t: "setSyncing", on: false });
     }
-  }, [db, cfg, dataDir, span, dispatch]);
+  }, [db, cfg, dataDir, dispatch]);
 
-  // Re-run on mount + every interval + whenever span changes.
   useEffect(() => {
     let cancelled = false;
     const intervalSec = Math.max(1, cfg.ui.refresh_interval_seconds);
 
     const tick = () => {
       if (cancelled || inFlight.current) return;
-      void refresh();
+      void refresh("full");
     };
 
     tick();
@@ -218,6 +292,10 @@ export function useRefresh(args: {
       clearInterval(id);
     };
   }, [refresh, cfg.ui.refresh_interval_seconds]);
+
+  useEffect(() => {
+    void refresh("span");
+  }, [args.spanId, refresh]);
 
   return refresh;
 }

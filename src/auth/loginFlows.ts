@@ -65,7 +65,7 @@ export function loginKindFor(id: string): LoginKind | undefined {
   return undefined;
 }
 
-/** Provider ids amana has a login flow for (fetchers + admin-API providers). */
+/** Provider ids Agent Mana has a login flow for (fetchers + admin-API providers). */
 export function loginableIds(): string[] {
   const v = supportedProviders().slice();
   for (const id of Object.keys(ADMIN_KEY)) if (!v.includes(id)) v.push(id);
@@ -93,7 +93,7 @@ function enableProvider(cfg: Config, id: string, method: AuthMethod): void {
 /** Health-check a credential via the provider's fetcher; throws on failure. */
 export async function healthCheck(db: Database, id: string, cred: Credential): Promise<void> {
   const fetcher = fetcherFor(id);
-  if (!fetcher) throw new Error(`amana has no fetcher for '${id}'`);
+  if (!fetcher) throw new Error(`Agent Mana has no fetcher for '${id}'`);
   try {
     if (fetcher.validate) {
       await fetcher.validate(cred, db);
@@ -160,7 +160,7 @@ export async function oauthLogin(ctx: LoginCtx, id: string, apiKeyFlag: boolean,
     case "minimax-code-cn": cred = await minimaxOauth.login(id, ui); break;
     case "kimi-code": cred = await kimiOauth.login(id, ui); break;
     case "xai-oauth": cred = await xaiOauth.login(id, ui); break;
-    default: throw new Error(`amana has no OAuth flow for '${id}' yet`);
+    default: throw new Error(`Agent Mana has no OAuth flow for '${id}' yet`);
   }
   await healthCheck(ctx.db, id, cred);
   credStore.upsert(ctx.dataDir, id, cred);

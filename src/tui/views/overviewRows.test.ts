@@ -27,7 +27,7 @@ function cfg(providers: ProviderCfg[]): Config {
 describe("buildOverviewRows gauge flag", () => {
   test("limitless provider: no gauge, share stated in text", () => {
     const totals = new Map([["omp", 1000], ["claude-code", 3000]]);
-    const rows = buildOverviewRows(cfg([provider("omp"), provider("claude-code")]), [], [], totals, 24);
+    const rows = buildOverviewRows(cfg([provider("omp"), provider("claude-code")]), [], [], totals, "24h");
     const omp = rows.find((r) => r.provider === "omp")!;
     expect(omp.gauge).toBe(false);
     expect(omp.pct).toBeCloseTo(25, 5); // 1000 / 4000
@@ -36,7 +36,7 @@ describe("buildOverviewRows gauge flag", () => {
 
   test("configured token cap: gauge on, utilization pct", () => {
     const totals = new Map([["omp", 3000]]);
-    const rows = buildOverviewRows(cfg([provider("omp", 5000)]), [], [], totals, 24);
+    const rows = buildOverviewRows(cfg([provider("omp", 5000)]), [], [], totals, "24h");
     const omp = rows.find((r) => r.provider === "omp")!;
     expect(omp.gauge).toBe(true);
     expect(omp.pct).toBeCloseTo(60, 5); // 3000 / 5000
@@ -45,7 +45,7 @@ describe("buildOverviewRows gauge flag", () => {
 
   test("live quota: gauge on", () => {
     const report = makeReport([makeLimit({ id: "5h", label: "5h", usedFraction: 0.5 })], "acct");
-    const rows = buildOverviewRows(cfg([provider("anthropic")]), [report], [], new Map(), 24);
+    const rows = buildOverviewRows(cfg([provider("anthropic")]), [report], [], new Map(), "24h");
     const row = rows.find((r) => r.provider === "anthropic")!;
     expect(row.live).toBe(true);
     expect(row.gauge).toBe(true);
@@ -53,7 +53,7 @@ describe("buildOverviewRows gauge flag", () => {
 
   test("error row: no gauge", () => {
     const errors = [{ provider: "omp", account: "local", message: "boom" }];
-    const rows = buildOverviewRows(cfg([provider("omp")]), [], errors, new Map(), 24);
+    const rows = buildOverviewRows(cfg([provider("omp")]), [], errors, new Map(), "24h");
     const omp = rows.find((r) => r.provider === "omp")!;
     expect(omp.gauge).toBe(false);
     expect(omp.error).toBe("boom");

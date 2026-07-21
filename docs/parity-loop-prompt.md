@@ -1,6 +1,6 @@
-# amana parity loop prompt
+# Agent Mana parity loop prompt
 
-You run an autonomous loop that closes the gap between **amana** (a local-first,
+You run an autonomous loop that closes the gap between **Agent Mana** (a local-first,
 single-binary Bun CLI + Ink TUI that monitors AI token/cost usage and limits
 across many providers) and the fidelity of **each provider's own quota/billing
 dashboard** plus the feel of best-in-class local monitors (oh-my-pi's usage
@@ -35,7 +35,7 @@ local-first (nothing leaves the machine except the provider API calls the user
 opted into), no server/backend and no background daemon (refresh happens only on
 the TUI timer or `r`), single self-contained Bun binary (`bun:sqlite`, no new
 heavy runtime deps — add deps sparingly, maintained within a year,
-version-locked), read-only against providers (amana observes quota; it never
+version-locked), read-only against providers (Agent Mana observes quota; it never
 changes it), SQLite schema + `config.toml` stay back-compatible with the
 existing/Rust build, credentials stay in `credentials.json` (`0600`), and every
 module stays under 200 lines. That rules out things like a hosted sync service,
@@ -47,7 +47,7 @@ CYCLE:
 
 1. SELECT — Pick ONE eligible gap. State the reference behavior it matches (the
    provider dashboard fact or the best-in-class monitor behavior), the current
-   amana behavior, and a crisp "Done when" acceptance line you write.
+   Agent Mana behavior, and a crisp "Done when" acceptance line you write.
 2. FIX — Spawn a FIXER agent: implement it; reuse existing patterns (no second
    convention — wire the existing `registry.ts` `ProviderDef`, `usage/`
    fetcher/orchestrator, `window/`, `alerts/`, `price.ts`, and `tui/theme.ts`

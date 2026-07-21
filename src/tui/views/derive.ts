@@ -52,7 +52,7 @@ export function buildOverviewRows(
   reports: UsageReport[],
   errors: FetchError[],
   spanTotals: Map<string, number>,
-  span: number,
+  spanLabel: string,
 ): OverviewRow[] {
   const rows: OverviewRow[] = [];
   let grandTotal = 0;
@@ -102,7 +102,7 @@ export function buildOverviewRows(
       status: used > 0 ? "ok" : "unknown",
       // No configured limit → the bar would misread as utilization, so this
       // row renders without a gauge; the share of span usage is stated in text.
-      detail: `${fmtTokens(used)} tok · ${share.toFixed(0)}% of ${span}h`,
+      detail: `${fmtTokens(used)} tok · ${share.toFixed(0)}% of ${spanLabel}`,
       live: false,
       gauge: false,
     });

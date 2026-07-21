@@ -52,11 +52,16 @@ describe("UsageChart", () => {
     expect(frame).toContain("00"); // first hour label
     expect(frame).toContain("03");
   });
-
   test("empty data renders a placeholder, not a crash", () => {
     expect(render(<UsageChart data={[]} />).lastFrame()).toContain("no activity");
   });
 
+  test("daily bucketMs renders MM/DD date labels instead of hours", () => {
+    const data = Array.from({ length: 7 }, () => 100);
+    const startMs = Date.UTC(2026, 6, 16, 0, 0, 0);
+    const frame = render(<UsageChart data={data} startMs={startMs} bucketMs={24 * 3_600_000} />).lastFrame() ?? "";
+    expect(frame).toContain("07/16");
+  });
   test("all-zero data still draws axes without bar glyphs", () => {
     const frame = render(<UsageChart data={Array(6).fill(0)} startMs={0} />).lastFrame() ?? "";
     expect(frame).toContain("┼");

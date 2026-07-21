@@ -19,7 +19,7 @@ export function notify(summary: string, body: string): void {
         { stdio: "ignore", detached: true },
       );
       proc.on("error", (err) => {
-        process.stderr.write(`amana: notify-send failed: ${err.message}\n`);
+        process.stderr.write(`Agent Mana: notify-send failed: ${err.message}\n`);
       });
       proc.unref();
       return;
@@ -31,7 +31,7 @@ export function notify(summary: string, body: string): void {
       const script = `display notification ${quote(body)} with title ${quote(summary)}`;
       const proc = spawn("osascript", ["-e", script], { stdio: "ignore", detached: true });
       proc.on("error", (err) => {
-        process.stderr.write(`amana: osascript failed: ${err.message}\n`);
+        process.stderr.write(`Agent Mana: osascript failed: ${err.message}\n`);
       });
       proc.unref();
       return;
@@ -40,7 +40,7 @@ export function notify(summary: string, body: string): void {
     // Windows: no-op. Spec says skip; we don't shell out to msg.exe.
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`amana: notify spawn threw: ${msg}\n`);
+    process.stderr.write(`Agent Mana: notify spawn threw: ${msg}\n`);
   }
 }
 

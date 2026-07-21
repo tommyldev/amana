@@ -1,11 +1,10 @@
-# amana - Agent Mana
+# Agent Mana
 
-**A**gent **T**oken **O**bserver & **M**onitor — a single-binary TypeScript/Bun
-CLI + TUI that ingests AI usage from local agent logs and admin APIs, fetches
-live quota with your own OAuth/API credentials, stores everything in a local
-SQLite database, and reports per-provider token/cost usage against your
-configured windows and limits — with threshold alerts and a modern tabbed
-dashboard.
+**monitor your model usage** — a single-binary TypeScript/Bun CLI + TUI that
+ingests AI usage from local agent logs and admin APIs, fetches live quota with
+your own OAuth/API credentials, stores everything in a local SQLite database,
+and reports per-provider token/cost usage against your configured windows and
+limits — with threshold alerts and a modern tabbed dashboard.
 
 > The command and package are named `amana`. The project ships from the
 > `atop` repository and keeps the `atop` on-disk names (`ATOP_*` env vars,
@@ -165,9 +164,10 @@ Two views plus a per-provider drill-in:
 | --- | --- |
 | `1` / `2` | Overview / Settings · `Tab` cycles |
 | `↑`/`↓` or `k`/`j` | Move selection (wraps) |
-| `Enter` / `→` / `l` | Overview: open provider · Settings: edit/toggle/run |
+| `←` / `→` | Switch view: Limits / Overview / Settings |
+| `Enter` | Overview: open provider · Settings: edit/toggle/run |
 | `Space` | Toggle the selected setting |
-| `Esc` / `←` / `Backspace` | Back (`Esc` at top level quits) |
+| `Esc` | Back (`Esc` at top level quits) |
 | `r` | Force refresh · `t` cycle chart span 12→24→48h |
 | `x` | Dismiss alert banner · `?`/`h` help · `q`/`Ctrl-C` quit |
 
@@ -198,7 +198,7 @@ Two log aggregates are enabled by default; everything else is opted in via
 
 ## Data & migration
 
-- **Config and history carry over.** amana reuses the historical `atop` paths, a
+- **Config and history carry over.** Agent Mana reuses the historical `atop` paths, a
   `config.toml` in the same format, and the same SQLite schema — an existing
   `atop.db` and settings are picked up as-is.
 - **Credentials do NOT carry over from the old Rust build.** That build stored

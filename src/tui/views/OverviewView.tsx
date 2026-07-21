@@ -5,8 +5,7 @@ import { UsageChart } from "../widgets/UsageChart.tsx";
 import { LineGauge } from "../widgets/LineGauge.tsx";
 import { fmtDuration, fmtTokens, truncate } from "../../report/format.ts";
 import { useTerminalSize } from "../useTerminalSize.ts";
-
-const HOUR_MS = 3_600_000;
+import { isAllTime, spanById } from "../spans.ts";
 
 function resetsIn(resetsAt: number | undefined): string {
 	if (resetsAt === undefined) return "";
@@ -17,17 +16,17 @@ function resetsIn(resetsAt: number | undefined): string {
 export function OverviewView({ state }: { state: TuiState }): React.JSX.Element {
 	const total = state.totalSeries.reduce((a, b) => a + b, 0);
 	const estCost = state.tokenSeries.reduce((a, p) => a + p.estCost, 0);
-	const startMs = Math.floor(Date.now() / HOUR_MS) * HOUR_MS - (state.span - 1) * HOUR_MS;
+	const span = spanById(state.spanId);
 	const { rows } = useTerminalSize();
 	const chartH = Math.max(8, Math.min(Math.floor(rows / 2), 14));
 
   return (
     <Box flexDirection="column">
       <Text bold>
-        last {state.span}h · {fmtTokens(total)} tok · ${estCost.toFixed(2)}
+        {isAllTime(span) ? "all-time" : `last ${span.label}`} · {fmtTokens(total)} tok · ${estCost.toFixed(2)}
       </Text>
       <Box marginY={1}>
-        <UsageChart data={state.totalSeries} startMs={startMs} height={chartH} />
+        <UsageChart data={state.totalSeries} startMs={state.spanWindow.startMs} bucketMs={state.spanWindow.bucketMs} height={chartH} />
       </Box>
       <Text bold color="cyan">
         providers

@@ -1,5 +1,5 @@
 /**
- * `amana usage` — fetch live provider usage/quota using amana's stored
+ * `amana usage` — fetch live provider usage/quota using Agent Mana's stored
  * credentials and print a compact text report (or `--json` for machine
  * output). Port of `cli/usage_cmd.rs`.
  */
@@ -31,14 +31,14 @@ export async function run(argv: string[]): Promise<void> {
   const result = await fetchAll(db, dataDir, { provider: values.provider });
 
   if (result.errors.length > 0) {
-    process.stderr.write(`amana: ${result.errors.length} fetch error(s):\n`);
+    process.stderr.write(`Agent Mana: ${result.errors.length} fetch error(s):\n`);
     for (const e of result.errors) {
       process.stderr.write(`  - ${e.provider} (${e.account}): ${e.message}\n`);
     }
   }
 
   if (result.reports.length === 0) {
-    console.log("amana: no usage reports returned (login first or check network)");
+    console.log("Agent Mana: no usage reports returned (login first or check network)");
     return;
   }
 

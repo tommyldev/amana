@@ -24,7 +24,7 @@ import {
 import type { Credential } from "../../auth/types.ts";
 import type { UsageFetcher } from "../fetcher.ts";
 
-const DEFAULT_BASE = "https://chatgpt.com/backend-api/codex";
+const DEFAULT_BASE = "https://chatgpt.com/backend-api";
 
 export interface WindowPayload {
   /** Direct percent remaining. */
@@ -50,6 +50,7 @@ export interface RateLimitPayload {
 export interface UsagePayload {
   plan_type?: string;
   rate_limit?: RateLimitPayload;
+  rate_limits?: UsagePayload;
 }
 
 /** Normalize a possibly-sec, possibly-ms epoch to ms. */
@@ -156,16 +157,17 @@ export const openaiCodexFetcher: UsageFetcher = {
     const resp = await sendRetry(`${base}/wham/usage`, { headers });
     if (!resp.ok) throw new Error(`openai-codex usage HTTP ${resp.status}`);
     const body = (await resp.json()) as UsagePayload;
-    const rate = body.rate_limit;
+    const payload = body.rate_limits ?? body;
+    const rate = payload.rate_limit;
     if (!rate) return null;
     const limitReached = rate.limit_reached ?? false;
     const nowMs = Date.now();
     const limits: UsageLimit[] = [];
     if (rate.primary_window) {
-      limits.push(buildLimit("primary", rate.primary_window, limitReached, body.plan_type, accountId, nowMs));
+      limits.push(buildLimit("primary", rate.primary_window, limitReached, payload.plan_type, accountId, nowMs));
     }
     if (rate.secondary_window) {
-      limits.push(buildLimit("secondary", rate.secondary_window, limitReached, body.plan_type, accountId, nowMs));
+      limits.push(buildLimit("secondary", rate.secondary_window, limitReached, payload.plan_type, accountId, nowMs));
     }
     if (limits.length === 0) return null;
     const account =

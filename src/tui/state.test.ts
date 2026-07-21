@@ -5,8 +5,10 @@
 import { describe, expect, test } from "bun:test";
 import { initialState, reducer, SETTINGS_FIELDS } from "./state.ts";
 import type { TuiState } from "./state.ts";
+import type { LaunchCache } from "./launchCache.ts";
 import type { AlertsCfg } from "../config/types.ts";
 import type { OverviewRow } from "./views/derive.ts";
+import { SPANS, DEFAULT_SPAN_ID, spanById, spanWindow } from "./spans.ts";
 
 const ALERTS: AlertsCfg = { enabled: true, thresholds: [75, 90, 100], desktop: true };
 const init = () => initialState(ALERTS);
@@ -16,11 +18,12 @@ function row(provider: string, pct: number): OverviewRow {
 }
 
 describe("initialState", () => {
-  test("lands on Overview, span 24, settings seeded from alerts", () => {
+  test("lands on Overview, default span, settings seeded from alerts", () => {
     const s = init();
     expect(s.tab).toBe("limits");
     expect(s.drillProvider).toBeNull();
-    expect(s.span).toBe(24);
+    expect(s.spanId).toBe(DEFAULT_SPAN_ID);
+    expect(s.spanWindow.buckets).toBeGreaterThan(0);
     expect(s.settings).toEqual({ enabled: true, thresholds: [75, 90, 100], desktop: true });
     expect(s.overviewRows).toEqual([]);
   });
@@ -29,6 +32,27 @@ describe("initialState", () => {
     const s = init();
     s.settings.thresholds.push(50);
     expect(ALERTS.thresholds).toEqual([75, 90, 100]);
+  });
+
+  test("seeds from a launch cache (restores prior session verbatim)", () => {
+    const lc: LaunchCache = {
+      savedAt: 1,
+      spanId: "7d",
+      spanWindow: { startMs: 10, endMs: 20, bucketMs: 3_600_000, buckets: 7 },
+      overviewRows: [row("anthropic", 42)],
+      limitRows: [],
+      reports: [],
+      errors: [],
+      tokenSeries: [],
+      totalSeries: [1, 2, 3],
+      accounts: [],
+    };
+    const s = initialState(ALERTS, lc);
+    expect(s.spanId).toBe("7d");
+    expect(s.spanWindow).toEqual(lc.spanWindow);
+    expect(s.totalSeries).toEqual([1, 2, 3]);
+    expect(s.overviewRows).toHaveLength(1);
+    expect(s.overviewRows[0]!.provider).toBe("anthropic");
   });
 });
 
@@ -76,13 +100,15 @@ describe("drillIn / back", () => {
 });
 
 describe("cycleSpan", () => {
-  test("cycles 24 → 48 → 12 → 24", () => {
-    let s = init();
-    s = reducer(s, { t: "cycleSpan" });
-    expect(s.span).toBe(48);
-    s = reducer(s, { t: "cycleSpan" });
-    expect(s.span).toBe(12);
-    expect(reducer(s, { t: "cycleSpan" }).span).toBe(24);
+  test("default 24h → 48h; full cycle wraps back to start", () => {
+    const s0 = init();
+    expect(s0.spanId).toBe("24h");
+    const s1 = reducer(s0, { t: "cycleSpan" });
+    expect(s1.spanId).toBe("48h");
+    const startId = s0.spanId;
+    let s = s0;
+    for (let i = 0; i < SPANS.length; i++) s = reducer(s, { t: "cycleSpan" });
+    expect(s.spanId).toBe(startId);
   });
 });
 
@@ -97,9 +123,11 @@ describe("setData", () => {
       limitRows: [],
       totalSeries: [1, 2, 3],
       accounts: [],
+      spanWindow: spanWindow(spanById(DEFAULT_SPAN_ID), Date.now()),
     });
     expect(s.overviewRows).toHaveLength(1);
     expect(s.totalSeries).toEqual([1, 2, 3]);
+    expect(s.spanWindow.buckets).toBeGreaterThan(0);
   });
 });
 
