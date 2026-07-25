@@ -1,185 +1,117 @@
-# Agent Mana
+<p align="center">
+  <h1 align="center">Agent Mana</h1>
+  <p align="center"><strong>monitor your model usage</strong> — a single-binary Bun CLI + TUI for AI token & cost tracking.</p>
+  <p align="center">
+    <a href="LICENSE-MIT"><img alt="license" src="https://img.shields.io/badge/license-MIT%20%7C%20Apache--2.0-blue"></a>
+    <a href="https://bun.sh"><img alt="runtime" src="https://img.shields.io/badge/runtime-Bun%20%E2%89%A5%201.1-faecd0?logo=bun"></a>
+    <img alt="platforms" src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey">
+    <img alt="providers" src="https://img.shields.io/badge/providers-40+-9aedfe">
+  </p>
+</p>
 
-**monitor your model usage** — a single-binary TypeScript/Bun CLI + TUI that
-ingests AI usage from local agent logs and admin APIs, fetches live quota with
-your own OAuth/API credentials, stores everything in a local SQLite database,
-and reports per-provider token/cost usage against your configured windows and
-limits — with threshold alerts and a modern tabbed dashboard.
+<p align="center">
+  <img src="docs/img/overview.svg" alt="Overview — hourly spend heat chart and per-provider usage bars">
+</p>
+<p align="center"><sub>The Overview tab: an aggregate hourly heat chart (green → yellow → red) plus one usage bar per provider. <em>Screenshots use seeded sample data.</em></sub></p>
 
-> The command and package are named `amana`. The project ships from the
-> `atop` repository and keeps the `atop` on-disk names (`ATOP_*` env vars,
-> `~/.local/share/atop`, `atop.db`) for backward compatibility — see
-> [Data & migration](#data--migration).
+`amana` ingests AI usage from local agent logs and admin APIs, fetches live quota with your own OAuth/API credentials, stores everything in a local SQLite database, and reports per-provider usage against your configured windows and limits — with threshold alerts and a modern tabbed dashboard.
 
-## Features
+- **Local-first.** SQLite under your XDG data dir; nothing leaves the machine except the provider calls you opt into.
+- **Multi-source ingestion.** Log sources (`omp`, `claude-code`) + admin APIs (`openai-api`, `anthropic-api`), incrementally tailed by byte offset + mtime.
+- **Live quota.** Real limits pulled from 12+ providers (Anthropic, Codex, Z.AI, MiniMax, Gemini, Copilot, …).
+- **Multiple accounts.** Log in to the same provider several times; each account is tracked separately.
+- **Windows & limits.** Rolling / daily / weekly / monthly windows; per-provider token and monthly-cost caps.
+- **Threshold alerts.** Desktop notification + in-TUI banner when a limit crosses 75/90/100% — deduped per window, re-armed after each reset.
+- **Hourly spend.** Per-provider token/cost charts across 12h → all-time spans.
 
-- **Local-first.** SQLite lives under your XDG data dir; nothing leaves the
-  machine except the provider API calls you opt into.
-- **Multi-source ingestion.** Log-file sources (`omp`, `claude-code`) plus admin
-  APIs (`openai-api`, `anthropic-api`), incrementally tailed by byte offset +
-  mtime so reruns only parse new bytes.
-- **Live usage.** Fetches real quota/limits directly from 12 providers (Anthropic,
-  ChatGPT/Codex, Z.AI, MiniMax, Gemini, Copilot, and more).
-- **Multiple accounts per provider.** Log in to the same provider several times
-  (e.g. two Anthropic accounts); each distinct account is tracked separately.
-- **Threshold alerts.** Configurable thresholds (default 75/90/100%) fire a
-  desktop notification (`notify-send`/`osascript`) and an in-TUI banner when a
-  limit is crossed — deduped per window, re-armed after each reset.
-- **Token spend by hour.** Per-provider hourly token/cost charts in the TUI.
-- **Windows & limits.** Rolling (`5h`), daily, weekly (`--weekday`), monthly
-  (`--day`); per-provider token and/or monthly-cost caps.
+## Install
 
-## Requirements
-
-- **[Bun](https://bun.sh) ≥ 1.1** — provides `bun:sqlite`, `bun test`, and the
-  single-binary `bun build --compile`. No other runtime is needed. The global
-  install and run-from-checkout paths need Bun installed; the standalone binary
-  runs on its own once built.
-- Linux, macOS, or Windows. Linux is the primary target (XDG paths;
-  `notify-send` for desktop alerts).
-
-Install Bun first if you don't have it:
+Requires [Bun](https://bun.sh) ≥ 1.1:
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
 ```
 
-## Install
-
-Pick one of the three paths below.
-
-### 1. Global install with Bun (recommended)
-
-Installs the `amana` command straight from the repo. Requires Bun at runtime.
+Pick one:
 
 ```bash
-bun add -g github:tommyldev/atop
-amana --help        # the `amana` command is now on your PATH (~/.bun/bin)
-```
+# 1. Global install (recommended; needs Bun at runtime)
+bun add -g github:tommyldev/amana
+amana --help
 
-Update later with `bun update -g amana`; remove with `bun remove -g amana`.
+# 2. Standalone binary (no Bun needed at runtime)
+git clone https://github.com/tommyldev/amana.git && cd amana && bun install && bun run build
+install -Dm755 dist/amana ~/.local/bin/amana
 
-> If `amana` isn't found afterwards, add Bun's global bin dir to your PATH:
-> `export PATH="$HOME/.bun/bin:$PATH"` (add it to your shell profile).
-
-### 2. Standalone binary (no Bun needed at runtime)
-
-Compiles a self-contained ~90 MB executable you can drop anywhere.
-
-```bash
-git clone https://github.com/tommyldev/atop.git
-cd atop
-bun install
-bun run build                          # produces ./dist/amana
-install -Dm755 dist/amana ~/.local/bin/amana   # or: sudo mv dist/amana /usr/local/bin/
-amana report
-```
-
-Make sure the target dir is on your PATH (`~/.local/bin` usually is).
-
-### 3. Run from a checkout (no install)
-
-```bash
-git clone https://github.com/tommyldev/atop.git
-cd atop
-bun install
-bun run start                          # = bun src/index.ts   (launches the TUI)
-bun src/index.ts report                # any subcommand works the same way
+# 3. Run from a checkout
+git clone https://github.com/tommyldev/amana.git && cd amana && bun install && bun run start
 ```
 
 ## Quick start
 
 ```bash
-# 1. See today's usage (runs an incremental sync first).
-amana report
-
-# 2. Authenticate providers.
-amana login anthropic        # OAuth (browser) → live quota; run twice for two accounts
-amana login openai-codex     # OAuth (ChatGPT/Codex)
-amana login minimax-code     # OAuth device flow
-amana login zai              # API key
-amana login openai-api       # admin key → cost ingestion
-
-# 3. Inspect / manage accounts.
-amana accounts list
-amana accounts remove anthropic --account you@example.com
-
-# 4. Configure windows, limits, and alerts.
+amana report                      # sync + print today's totals and window status
+amana login anthropic             # OAuth (browser) → live quota; run twice for two accounts
+amana login openai-api            # admin key → cost ingestion
 amana window set omp --type rolling --duration 5h
 amana limit set anthropic --tokens 10000000 --cost 50
 amana alerts set --thresholds 75,90,100 --desktop true
-amana alerts test            # fire a test notification
-
-# 5. Launch the TUI (default — no args).
-amana
+amana                             # launch the TUI (default)
 ```
 
-`report` and `sync` both run an incremental sync first, so a fresh install with
-no DB populates on the first invocation.
-
-> Running from a checkout without installing? Replace `amana` with
-> `bun src/index.ts` in every command above.
+Running from a checkout? Replace `amana` with `bun src/index.ts`.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `amana` (no args) | Launch the tabbed TUI dashboard (default). |
+| `amana` | Launch the tabbed TUI dashboard (default). |
 | `amana report` | Sync + print today's totals and per-provider window status. |
 | `amana sync [--full]` | Run ingestion now. `--full` re-reads from byte 0. |
 | `amana usage [--json] [--provider <id>]` | Fetch live provider usage/quota. |
-| `amana graph [--span 24] [--provider <id>]` | Plot the hourly token-usage rate (tokens/hour) as a text bar chart + per-provider breakdown. |
+| `amana graph [--span 24] [--provider <id>]` | Plot the hourly token-usage rate as a text bar chart. |
 | `amana login [<id>] [--api-key]` | Authenticate a provider (OAuth, device flow, or API/admin key). |
-| `amana accounts list` | List stored accounts (provider, label, kind, expiry). |
-| `amana accounts remove <id> [--account <label>]` | Remove one stored account. |
+| `amana accounts list \| remove <id> [--account <label>]` | Manage stored accounts. |
 | `amana window set <id> --type <t> …` | Configure the usage window (see below). |
 | `amana limit set <id> [--cost] [--tokens]` | Set a per-window token and/or monthly cost cap. |
-| `amana alerts set [--thresholds a,b,c] [--desktop true\|false] [--enabled true\|false]` | Configure alerts. |
-| `amana alerts test` | Fire a test desktop notification. |
+| `amana alerts set \| test` | Configure / fire-test threshold alerts. |
 
-Window flags:
+Window types — `--type rolling --duration 5h` · `daily` · `weekly --weekday mon` · `monthly --day 1`.
 
-| `--type` | Required flag | Meaning |
-| --- | --- | --- |
-| `rolling` | `--duration 5h` | Sliding window of the given duration (epoch-grid floored). |
-| `daily` | (none) | Calendar day, resets 00:00 UTC. |
-| `weekly` | `--weekday mon` | Week anchored on the given weekday. |
-| `monthly` | `--day 1` | Month anchored on the given day-of-month. |
+## Dashboard
 
-## TUI
+<p align="center">
+  <img src="docs/img/drill-in.svg" alt="Provider detail — limits, hourly chart, and per-model breakdown">
+</p>
+<p align="center"><sub>Drill into a provider (Enter) for its live limits, its own hourly chart, and a per-model token/cost table.</sub></p>
 
-Two views plus a per-provider drill-in:
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/img/limits.svg" alt="Limits view"><br><sub><b>Limits</b> — every enabled provider's windows, caps and resets.</sub></td>
+    <td width="50%" align="center"><img src="docs/img/settings.svg" alt="Settings view"><br><sub><b>Settings</b> — alert thresholds and notifications.</sub></td>
+  </tr>
+</table>
 
-- **Overview** — an aggregate hourly token-usage heat chart (green→yellow→red by
-  intensity) over all providers, plus one colored usage bar per provider (live
-  limits when you've logged in, otherwise local window usage). Select a provider
-  and press `Enter` to drill in.
-- **Provider** (drill-in) — that provider's live limit bars, its own hourly heat
-  chart, and a per-model token/cost table.
-- **Settings** — edit alert thresholds and toggle enabled / desktop
-  notifications; changes save to `config.toml`. Includes a "send test
-  notification" action.
+<p align="center">
+  <img src="docs/img/overview-7d.svg" alt="Overview at the 7-day span">
+</p>
+<p align="center"><sub>Press <code>t</code> to cycle the chart span: 12h → 24h → 48h → 7d → 30d → 90d → all-time.</sub></p>
 
 | Key | Action |
 | --- | --- |
-| `1` / `2` | Overview / Settings · `Tab` cycles |
+| `1`/`2`/`3` or `←`/`→` | Limits / Overview / Settings |
 | `↑`/`↓` or `k`/`j` | Move selection (wraps) |
-| `←` / `→` | Switch view: Limits / Overview / Settings |
-| `Enter` | Overview: open provider · Settings: edit/toggle/run |
+| `Enter` | Overview: drill into provider · Settings: edit/toggle/run |
 | `Space` | Toggle the selected setting |
 | `Esc` | Back (`Esc` at top level quits) |
-| `r` | Force refresh · `t` cycle chart span 12→24→48h |
-| `x` | Dismiss alert banner · `?`/`h` help · `q`/`Ctrl-C` quit |
+| `t` | Cycle chart span · `r` force refresh |
+| `p` | Provider login overlay · `?`/`h` help · `q`/`Ctrl-C` quit |
 
-The TUI refreshes on a timer (`ui.refresh_interval_seconds`, default 60) and on
-`r`: it syncs logs, fetches live usage, recomputes hourly spend, reloads
-accounts, and evaluates alert thresholds (firing the banner + desktop
-notification). Alerts fire only from this loop — there is no background daemon.
+The TUI syncs logs, fetches live usage, recomputes hourly spend, and evaluates alerts on a timer (default 60s) and on `r`. Alerts fire only from this loop — there is no background daemon.
 
 ## Providers
 
-Two log aggregates are enabled by default; everything else is opted in via
-`amana login`.
+Two log aggregates are enabled by default; everything else is opted in via `amana login`.
 
 | Id | Source / auth | Default window |
 | --- | --- | --- |
@@ -188,35 +120,25 @@ Two log aggregates are enabled by default; everything else is opted in via
 | `anthropic` | OAuth (Claude Pro/Max) | Rolling 5h + weekly |
 | `openai-codex` | OAuth (ChatGPT/Codex) | Rolling 5h + weekly |
 | `minimax-code` / `-cn` | OAuth device flow | Rolling 5h + weekly |
-| `google-antigravity` / `google-gemini-cli` | OAuth | Daily |
+| `google-gemini-cli` / `google-antigravity` | OAuth | Daily |
 | `zai` | API key | Rolling 5h + weekly |
 | `github-copilot` | API key (+ optional enterprise URL) | Monthly |
 | `openai-api` / `anthropic-api` | Admin key → cost ingestion | Monthly |
 
-`amana usage --provider <id>` and the TUI Limits tab also cover `kimi-code`,
-`opencode-go`, `ollama`, and `xai-oauth` where usage endpoints exist.
+`amana usage --provider <id>` and the Limits tab also cover `kimi-code`, `cursor`, `deepseek`, `groq`, `ollama`, `xai-oauth`, and more where usage endpoints exist.
 
-## Data & migration
+## Data & environment
 
-- **Config and history carry over.** Agent Mana reuses the historical `atop` paths, a
-  `config.toml` in the same format, and the same SQLite schema — an existing
-  `atop.db` and settings are picked up as-is.
-- **Credentials do NOT carry over from the old Rust build.** That build stored
-  them encrypted in the OS keyring; this build uses a plain `credentials.json`
-  (mode `0600`) in the data dir, matching the Codex/Claude/MiniMax CLI
-  convention. Re-run `amana login <provider>` once.
-
-## Environment variables
+For backward compatibility the on-disk layout keeps the historical `atop` names — an existing `config.toml`, `atop.db`, and settings are picked up as-is. Credentials are stored in a plaintext `credentials.json` (mode `0600`) in the data dir; if you are migrating from the old encrypted-keyring build, re-run `amana login <provider>` once.
 
 | Variable | Effect |
 | --- | --- |
-| `ATOP_CONFIG_DIR` | Override the config dir; `config.toml` is read/written here. |
-| `ATOP_DATA_DIR` | Override the data dir; holds `atop.db` and `credentials.json`. |
+| `ATOP_CONFIG_DIR` | Override the config dir (`config.toml`). |
+| `ATOP_DATA_DIR` | Override the data dir (`atop.db`, `credentials.json`). |
 | `ATOP_OMP_DIR` | Root for `omp` jsonl ingestion. |
 | `ATOP_CLAUDE_DIR` | Root for `claude-code` jsonl ingestion. |
 
-Defaults (Linux): config `${XDG_CONFIG_HOME:-~/.config}/atop`, data
-`${XDG_DATA_HOME:-~/.local/share}/atop`.
+Defaults (Linux): config `${XDG_CONFIG_HOME:-~/.config}/atop`, data `${XDG_DATA_HOME:-~/.local/share}/atop`.
 
 ## Development
 
@@ -226,10 +148,12 @@ bun run typecheck   # tsc --noEmit
 bun run build       # single-binary ./dist/amana
 ```
 
-Layout: `src/{config,db,window,ingest,auth,usage,alerts,report,cli,tui}` plus
-`registry.ts` and `price.ts`. Every module is kept under 200 lines.
+Layout: `src/{config,db,window,ingest,auth,usage,alerts,report,cli,tui}` plus `registry.ts` and `price.ts`.
 
-## License
+The screenshots in this README are regenerated from the real TUI rendered against seeded sample data:
 
-Dual-licensed under either of [MIT](LICENSE-MIT) or
-[Apache-2.0](LICENSE-APACHE), at your option.
+```bash
+bun scripts/shoot.ts    # writes docs/img/*.svg
+```
+
+Dual-licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
