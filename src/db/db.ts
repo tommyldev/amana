@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS usage_snapshots(
   resets_at_ms INTEGER);
 CREATE INDEX IF NOT EXISTS idx_usage_snapshots_plt
   ON usage_snapshots(provider, limit_id, fetched_at_ms);
+CREATE INDEX IF NOT EXISTS idx_usage_events_time
+  ON usage_events(timestamp_ms);
+CREATE INDEX IF NOT EXISTS idx_usage_events_source_time
+  ON usage_events(source, timestamp_ms, provider);
 `;
 
 /**

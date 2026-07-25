@@ -131,7 +131,6 @@ function computeSpanView(
   } catch (e) {
     console.error("[Agent Mana] overview build failed:", e instanceof Error ? e.message : e);
   }
-
   return { spanWindow: win, totalSeries, tokenSeries, overviewRows };
 }
 

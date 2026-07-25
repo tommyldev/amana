@@ -47,3 +47,11 @@ test("claude-3-7-sonnet prices at $3/$15 per Mtok (was unpriced)", () => {
   expect(cost("claude-3-7-sonnet-20250219", 1_000_000, 1_000_000)).toBeCloseTo(18.0, 9);
   expect(cost("claude-3-7-sonnet-20250219", 1_000_000, 0)).toBeCloseTo(3.0, 9);
 });
+
+test("MiniMax-M3 uses its context tiers and explicit cache rates", () => {
+  const standard = 0.512 * 0.3 + 1.2 + 0.06;
+  expect(cost("MiniMax-M3", 512_000, 1_000_000, 1_000_000, 1_000_000)).toBeCloseTo(standard, 9);
+
+  const longContext = (512_001 / 1_000_000) * 0.6 + 2.4 + 0.12;
+  expect(cost("minimax-m3", 512_001, 1_000_000, 1_000_000, 1_000_000)).toBeCloseTo(longContext, 9);
+});

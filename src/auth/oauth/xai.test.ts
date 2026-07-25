@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { tokenToCred, validateXAIEndpoint } from "./xai.ts";
+import {
+  buildXaiCliBillingUrl,
+  extractXaiAccessTokenSubject,
+  getXaiCliBillingHeaders,
+  tokenToCred,
+  validateXAIBillingEndpoint,
+  validateXAIEndpoint,
+} from "./xai.ts";
 
 const SKEW_MS = 5 * 60 * 1000;
 
@@ -59,5 +66,57 @@ describe("xai tokenToCred", () => {
   test("throws on missing or non-finite expires_in", () => {
     expect(() => tokenToCred({ access_token: "a", refresh_token: "r" })).toThrow(/expires_in/);
     expect(() => tokenToCred({ access_token: "a", refresh_token: "r", expires_in: Number.NaN })).toThrow(/expires_in/);
+  });
+});
+
+describe("validateXAIBillingEndpoint", () => {
+  test("accepts https on grok.com and *.grok.com", () => {
+    expect(validateXAIBillingEndpoint("https://cli-chat-proxy.grok.com/v1/billing")).toBe(
+      "https://cli-chat-proxy.grok.com/v1/billing",
+    );
+    expect(validateXAIBillingEndpoint("https://grok.com/v1/billing")).toBe("https://grok.com/v1/billing");
+  });
+
+  test("rejects the OIDC issuer host (x.ai) and foreign hosts", () => {
+    expect(() => validateXAIBillingEndpoint("https://auth.x.ai/oauth/token")).toThrow();
+    expect(() => validateXAIBillingEndpoint("https://evil.com/v1/billing")).toThrow();
+    expect(() => validateXAIBillingEndpoint("https://grok.com.evil.com/v1/billing")).toThrow();
+  });
+
+  test("rejects non-https schemes", () => {
+    expect(() => validateXAIBillingEndpoint("http://grok.com/v1/billing")).toThrow();
+  });
+});
+
+describe("buildXaiCliBillingUrl", () => {
+  test("default adds format=credits and pins the billing host", () => {
+    expect(buildXaiCliBillingUrl()).toBe("https://cli-chat-proxy.grok.com/v1/billing?format=credits");
+  });
+
+  test("empty format omits the query string (unified monthly payload)", () => {
+    expect(buildXaiCliBillingUrl("")).toBe("https://cli-chat-proxy.grok.com/v1/billing");
+  });
+});
+
+describe("getXaiCliBillingHeaders", () => {
+  test("sends bearer, accept, and the CLI product-gate header", () => {
+    expect(getXaiCliBillingHeaders("tok-123")).toEqual({
+      Authorization: "Bearer tok-123",
+      Accept: "application/json",
+      "X-XAI-Token-Auth": "xai-grok-cli",
+    });
+  });
+});
+
+describe("extractXaiAccessTokenSubject", () => {
+  test("reads the sub claim from a JWT without verifying", () => {
+    const body = Buffer.from(JSON.stringify({ sub: "user-uuid" })).toString("base64url");
+    expect(extractXaiAccessTokenSubject(`hdr.${body}.sig`)).toBe("user-uuid");
+  });
+
+  test("returns undefined for malformed or sub-less tokens", () => {
+    expect(extractXaiAccessTokenSubject("not-a-jwt")).toBeUndefined();
+    const body = Buffer.from(JSON.stringify({ foo: 1 })).toString("base64url");
+    expect(extractXaiAccessTokenSubject(`hdr.${body}.sig`)).toBeUndefined();
   });
 });

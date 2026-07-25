@@ -40,6 +40,7 @@ export interface TuiState {
   banner: string | null;
   bannerAt: number | null;
   syncing: boolean;
+  dataTick: number;
   helpVisible: boolean;
   spanId: string;
   spanWindow: SpanWindow;
@@ -95,6 +96,7 @@ export function initialState(alerts: AlertsCfg, launch?: LaunchCache | null): Tu
     banner: null,
     bannerAt: null,
     syncing: false,
+    dataTick: 0,
     helpVisible: false,
     spanId: launch?.spanId ?? DEFAULT_SPAN_ID,
     spanWindow: launch?.spanWindow ?? spanWindow(spanById(DEFAULT_SPAN_ID), Date.now()),
@@ -154,6 +156,7 @@ export function reducer(s: TuiState, a: Action): TuiState {
         totalSeries: a.totalSeries,
         spanWindow: a.spanWindow,
         accounts: a.accounts,
+        dataTick: s.dataTick + 1,
       };
 
     case "setSyncing":

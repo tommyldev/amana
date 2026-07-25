@@ -28,7 +28,7 @@ function dateLabel(ms: number): string {
  * `renderHourlyGraph`. Each column is colored by its share of the peak
  * (green → yellow → red) via `heatInk`; axis chrome and labels render dim.
  */
-export function UsageChart({ data, startMs, height = 10, labelEvery, bucketMs }: UsageChartProps): React.JSX.Element {
+export const UsageChart = React.memo(function UsageChart({ data, startMs, height = 10, labelEvery, bucketMs }: UsageChartProps): React.JSX.Element {
   const bMs = bucketMs ?? HOUR_MS;
   const isDaily = bMs >= DAY_MS;
   const n = data.length;
@@ -66,13 +66,15 @@ export function UsageChart({ data, startMs, height = 10, labelEvery, bucketMs }:
   for (let i = 0; i < n; ) {
     if (i % every === 0 && i + 1 < n) {
       const ms = (startMs ?? 0) + i * bMs;
-      labelRow += isDaily ? dateLabel(ms) : hourLabel(ms);
-      i += 2;
+      const label = isDaily ? dateLabel(ms) : hourLabel(ms);
+      labelRow += label;
+      i += label.length;
     } else {
       labelRow += " ";
       i += 1;
     }
   }
+  while (labelRow.length < gutter + 2 + n) labelRow += " ";
 
   return (
     <Box flexDirection="column">
@@ -83,4 +85,4 @@ export function UsageChart({ data, startMs, height = 10, labelEvery, bucketMs }:
       {startMs !== undefined ? <Text dimColor>{labelRow}</Text> : null}
     </Box>
   );
-}
+});

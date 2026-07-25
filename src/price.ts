@@ -1,7 +1,14 @@
-interface PriceEntry {
-  pattern: string;
+interface PriceTier {
   pinPerMtok: number;
   poutPerMtok: number;
+  cacheReadPerMtok?: number;
+  cacheWritePerMtok?: number;
+}
+
+interface PriceEntry extends PriceTier {
+  pattern: string;
+  caseInsensitive?: boolean;
+  longContext?: PriceTier & { abovePromptTokens: number };
 }
 
 /**
@@ -23,6 +30,21 @@ const PRICES: PriceEntry[] = [
   { pattern: "gpt-3.5-turbo", pinPerMtok: 0.5, poutPerMtok: 1.5 },
   { pattern: "o1", pinPerMtok: 15.0, poutPerMtok: 60.0 },
   { pattern: "o3-mini", pinPerMtok: 1.1, poutPerMtok: 4.4 },
+  {
+    pattern: "minimax-m3",
+    caseInsensitive: true,
+    pinPerMtok: 0.3,
+    poutPerMtok: 1.2,
+    cacheReadPerMtok: 0.06,
+    cacheWritePerMtok: 0,
+    longContext: {
+      abovePromptTokens: 512_000,
+      pinPerMtok: 0.6,
+      poutPerMtok: 2.4,
+      cacheReadPerMtok: 0.12,
+      cacheWritePerMtok: 0,
+    },
+  },
 ];
 
 /**
@@ -47,12 +69,18 @@ export function cost(
   cacheWrite = 0,
 ): number | undefined {
   for (const e of PRICES) {
-    if (model.includes(e.pattern)) {
+    const matches = e.caseInsensitive
+      ? model.toLowerCase().includes(e.pattern)
+      : model.includes(e.pattern);
+    if (matches) {
+      const tier = e.longContext && prompt > e.longContext.abovePromptTokens ? e.longContext : e;
+      const cacheReadPerMtok = tier.cacheReadPerMtok ?? tier.pinPerMtok * CACHE_READ_MULT;
+      const cacheWritePerMtok = tier.cacheWritePerMtok ?? tier.pinPerMtok * CACHE_WRITE_MULT;
       return (
-        (prompt / 1_000_000) * e.pinPerMtok +
-        (completion / 1_000_000) * e.poutPerMtok +
-        (cacheRead / 1_000_000) * e.pinPerMtok * CACHE_READ_MULT +
-        (cacheWrite / 1_000_000) * e.pinPerMtok * CACHE_WRITE_MULT
+        (prompt / 1_000_000) * tier.pinPerMtok +
+        (completion / 1_000_000) * tier.poutPerMtok +
+        (cacheRead / 1_000_000) * cacheReadPerMtok +
+        (cacheWrite / 1_000_000) * cacheWritePerMtok
       );
     }
   }

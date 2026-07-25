@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import type { Database } from "bun:sqlite";
 import type { TuiState } from "../state.ts";
@@ -44,25 +44,29 @@ export function ProviderView({ state, db }: { state: TuiState; db: Database }): 
   // `provider` filter). tokenSeries is keyed by the raw event `provider`
   // field, which doesn't match aggregate ids like "omp"/"claude-code" — so
   // query the source-scoped series directly, exactly like breakdownByModel.
-  const sources = sourcesFor(id);
-  const ompProvider = byId(id)?.ompProvider ?? undefined;
-  const buckets = windowSeries(db, startMs, endMs, sources, ompProvider, windowBuckets);
-  const totalTokens = buckets.reduce((a, b) => a + b, 0);
-  let chartData = buckets;
-  let chartTotal = totalTokens;
-  let unit = "tok";
-  let level: SnapshotLevel | null = null;
-  if (totalTokens === 0) {
-    chartData = snapshotDeltaSeries(db, startMs, endMs, { provider: id, buckets: windowBuckets });
-    chartTotal = chartData.reduce((a, b) => a + b, 0);
-    const row = db.query("SELECT unit FROM usage_snapshots WHERE provider = ? ORDER BY fetched_at_ms DESC LIMIT 1").get(id) as { unit?: string } | undefined;
-    unit = row?.unit ?? "tok";
-    if (chartTotal === 0) {
-      level = snapshotLevelSeries(db, startMs, endMs, id, windowBuckets);
-      if (level) chartData = level.series;
+  const { chartData, chartTotal, unit, level, totalTokens, models, totalCost } = useMemo(() => {
+    const sources = sourcesFor(id);
+    const ompProvider = byId(id)?.ompProvider ?? undefined;
+    const buckets = windowSeries(db, startMs, endMs, sources, ompProvider, windowBuckets);
+    const totalTokens = buckets.reduce((a, b) => a + b, 0);
+    let chartData = buckets;
+    let chartTotal = totalTokens;
+    let unit = "tok";
+    let level: SnapshotLevel | null = null;
+    if (totalTokens === 0) {
+      chartData = snapshotDeltaSeries(db, startMs, endMs, { provider: id, buckets: windowBuckets });
+      chartTotal = chartData.reduce((a, b) => a + b, 0);
+      const row = db.query("SELECT unit FROM usage_snapshots WHERE provider = ? ORDER BY fetched_at_ms DESC LIMIT 1").get(id) as { unit?: string } | undefined;
+      unit = row?.unit ?? "tok";
+      if (chartTotal === 0) {
+        level = snapshotLevelSeries(db, startMs, endMs, id, windowBuckets);
+        if (level) chartData = level.series;
+      }
     }
-  }
-  const models = breakdownByModel(db, startMs, endMs, sources, ompProvider);
+    const models = breakdownByModel(db, startMs, endMs, sources, ompProvider);
+    const totalCost = models.reduce((s, m) => s + m.cost, 0);
+    return { chartData, chartTotal, unit, level, totalTokens, models, totalCost };
+  }, [db, id, startMs, endMs, bucketMs, windowBuckets, state.dataTick]);
   // Local providers have no live `reports`; surface their configured window
   // usage from the shared limitRows (per-window since the multi-window cycle).
   const localRows = state.limitRows.filter((r) => r.provider === id && !r.error);
@@ -70,7 +74,7 @@ export function ProviderView({ state, db }: { state: TuiState; db: Database }): 
   return (
     <Box flexDirection="column">
       <Text bold color={colorFor(id)}>
-        {byId(id)?.label ?? id} · {isAllTime(span) ? "all-time" : `last ${span.label}`} · {headerStat(unit, chartTotal, level)}
+        {byId(id)?.label ?? id} · {isAllTime(span) ? "all-time" : `last ${span.label}`} · {headerStat(unit, chartTotal, level)}{totalCost > 0 ? ` · $${totalCost.toFixed(2)}` : ""}
       </Text>
 
       {reports.map((r) => (

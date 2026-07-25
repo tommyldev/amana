@@ -62,6 +62,19 @@ describe("UsageChart", () => {
     const frame = render(<UsageChart data={data} startMs={startMs} bucketMs={24 * 3_600_000} />).lastFrame() ?? "";
     expect(frame).toContain("07/16");
   });
+  test("daily labels stay aligned with their bar columns across a 90-day window", () => {
+    const data = Array.from({ length: 90 }, () => 100);
+    const startMs = Date.UTC(2026, 3, 24, 0, 0, 0);
+    const frame = render(<UsageChart data={data} startMs={startMs} bucketMs={24 * 3_600_000} />).lastFrame() ?? "";
+    const lines = frame.split("\n");
+    const xAxis = lines.find((l) => l.includes("└")) ?? "";
+    const labelLine = lines[lines.indexOf(xAxis) + 1] ?? "";
+    const chartStart = xAxis.indexOf("└") + 1;
+    const labelOffset = labelLine.indexOf("04/24");
+    expect(labelOffset).toBe(chartStart);
+    expect(labelLine).toContain("07/14");
+    expect(labelLine.slice(chartStart + 90)).not.toMatch(/[0-9]/);
+  });
   test("all-zero data still draws axes without bar glyphs", () => {
     const frame = render(<UsageChart data={Array(6).fill(0)} startMs={0} />).lastFrame() ?? "";
     expect(frame).toContain("┼");
