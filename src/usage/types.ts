@@ -91,7 +91,7 @@ export function resolveUsedFraction(l: UsageLimit): number | undefined {
   return undefined;
 }
 
-/** Provider ids atop can fetch live usage for (the 12 fetchers). Shared by
+/** Provider ids atop can fetch live usage for (the 13 fetchers). Shared by
  * `usage/fetcher.ts::supported()` and `auth/store.ts::allProviders()`. */
 export const SUPPORTED_PROVIDERS: string[] = [
   "zai",
@@ -106,4 +106,5 @@ export const SUPPORTED_PROVIDERS: string[] = [
   "opencode-go",
   "ollama",
   "xai-oauth",
+  "deepseek",
 ];

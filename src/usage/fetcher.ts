@@ -28,6 +28,7 @@ import { googleGeminiCliFetcher } from "./providers/googleGeminiCli.ts";
 import { openaiCodexFetcher } from "./providers/openaiCodex.ts";
 import { kimiCodeFetcher } from "./providers/kimiCode.ts";
 import { minimaxFetcher, minimaxCnFetcher } from "./providers/minimax.ts";
+import { deepseekFetcher } from "./providers/deepseek.ts";
 import { opencodeGoFetcher } from "./providers/opencodeGo.ts";
 import { ollamaFetcher } from "./providers/ollama.ts";
 import { xaiOauthFetcher } from "./providers/xaiOauth.ts";
@@ -43,6 +44,7 @@ const REGISTRY: Record<string, UsageFetcher> = {
   "minimax-code": minimaxFetcher,
   "minimax-code-cn": minimaxCnFetcher,
   "opencode-go": opencodeGoFetcher,
+  "deepseek": deepseekFetcher,
   "ollama": ollamaFetcher,
   "xai-oauth": xaiOauthFetcher,
 };

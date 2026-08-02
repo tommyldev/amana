@@ -33,7 +33,12 @@ export interface LoginCtx {
   configFile: string;
 }
 
-const API_KEY_ONLY: Record<string, true> = { zai: true, "github-copilot": true };
+const API_KEY_ONLY: Record<string, true> = {
+  zai: true,
+  "github-copilot": true,
+  deepseek: true,
+  "opencode-go": true,
+};
 const PURE_OAUTH: Record<string, true> = {
   anthropic: true,
   "google-antigravity": true,
