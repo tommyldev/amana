@@ -16,6 +16,7 @@ import { refresh as openaiCodexRefresh } from "../auth/oauth/openaiCodex.ts";
 import { refresh as minimaxRefresh } from "../auth/oauth/minimax.ts";
 import { refresh as kimiRefresh } from "../auth/oauth/kimi.ts";
 import { refresh as xaiRefresh } from "../auth/oauth/xai.ts";
+import { refresh as opencodeRefresh } from "../auth/oauth/opencode.ts";
 
 export interface FetchError {
   provider: string;
@@ -44,6 +45,8 @@ function refreshFor(provider: string): ((cred: Credential) => Promise<Credential
       return kimiRefresh;
     case "xai-oauth":
       return xaiRefresh;
+    case "opencode-go":
+      return opencodeRefresh;
     default:
       return undefined;
   }

@@ -124,7 +124,7 @@ Two log aggregates are enabled by default; everything else is opted in via `aman
 | `zai` | API key | Rolling 5h + weekly |
 | `github-copilot` | API key (+ optional enterprise URL) | Monthly |
 | `deepseek` | API key → account balance | Monthly |
-| `opencode-go` | API key → OMP-observed spend | Rolling 5h + weekly + monthly |
+| `opencode-go` | OAuth (device flow) → console plan meters; API key → OMP-observed spend only | Rolling 5h + weekly + monthly |
 | `openai-api` / `anthropic-api` | Admin key → cost ingestion | Monthly |
 
 `amana usage --provider <id>` and the Limits tab also cover `kimi-code`, `cursor`, `deepseek`, `opencode-go`, `groq`, `ollama`, `xai-oauth`, and more where usage endpoints exist.

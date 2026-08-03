@@ -15,6 +15,7 @@ import * as openaiCodexOauth from "./oauth/openaiCodex.ts";
 import * as minimaxOauth from "./oauth/minimax.ts";
 import * as kimiOauth from "./oauth/kimi.ts";
 import * as xaiOauth from "./oauth/xai.ts";
+import * as opencodeOauth from "./oauth/opencode.ts";
 import { cliUi, type LoginUi } from "./oauth/ui.ts";
 import { byId } from "../registry.ts";
 import * as credStore from "./store.ts";
@@ -37,7 +38,6 @@ const API_KEY_ONLY: Record<string, true> = {
   zai: true,
   "github-copilot": true,
   deepseek: true,
-  "opencode-go": true,
 };
 const PURE_OAUTH: Record<string, true> = {
   anthropic: true,
@@ -48,6 +48,7 @@ const MIXED_APIKEY_OAUTH: Record<string, true> = {
   "openai-codex": true,
   "minimax-code": true,
   "minimax-code-cn": true,
+  "opencode-go": true,
 };
 const OAUTH_ONLY: Record<string, true> = { "kimi-code": true, "xai-oauth": true };
 const ADMIN_KEY: Record<string, true> = { "openai-api": true, "anthropic-api": true };
@@ -165,6 +166,7 @@ export async function oauthLogin(ctx: LoginCtx, id: string, apiKeyFlag: boolean,
     case "minimax-code-cn": cred = await minimaxOauth.login(id, ui); break;
     case "kimi-code": cred = await kimiOauth.login(id, ui); break;
     case "xai-oauth": cred = await xaiOauth.login(id, ui); break;
+    case "opencode-go": cred = await opencodeOauth.login(id, ui); break;
     default: throw new Error(`Agent Mana has no OAuth flow for '${id}' yet`);
   }
   await healthCheck(ctx.db, id, cred);
